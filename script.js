@@ -24,7 +24,7 @@
    para treinar modelos. Este site só envia o NOME da doença, então
    não há problema — mas nunca digite dados de pacientes na busca.
    ================================================================= */
-const API_KEY = "INSERIR_CHAVE_AQUI";   // ← cole aqui sua chave do Google AI Studio
+const API_KEY = "AQ.Ab8RN6JmhhNhicn1_byevLpQbnNZljC5DmgiXuOspVesxQ6Xqg";   // ← cole aqui sua chave do Google AI Studio
 
 const CONFIG = {
   API_KEY: API_KEY,
