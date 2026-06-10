@@ -1,0 +1,109 @@
+
+              type="text"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="Ex.: Hipertensão, Hepatite, Lúpus, Diabetes…"
+              aria-label="Nome da doença, síndrome ou condição"
+              aria-expanded="false"
+              aria-controls="suggestions"
+            />
+            <button class="mic-btn" id="btnVoice" type="button" aria-label="Buscar por voz">
+              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            </button>
+            <!-- Sugestões automáticas -->
+            <ul class="suggestions" id="suggestions" role="listbox" hidden></ul>
+          </div>
+          <button class="btn btn--primary search__submit" id="btnAnalyze" type="button">
+            <span>Analisar</span>
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+
+        <!-- Exemplos rápidos -->
+        <div class="chips" aria-label="Exemplos de busca">
+          <button class="chip" type="button" data-example="Hepatite">Hepatite</button>
+          <button class="chip" type="button" data-example="Diabetes">Diabetes</button>
+          <button class="chip" type="button" data-example="Anemia">Anemia</button>
+          <button class="chip" type="button" data-example="Lúpus Eritematoso Sistêmico">Lúpus</button>
+          <button class="chip" type="button" data-example="Hipertensão Arterial">Hipertensão</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== ESTADO DE CARREGAMENTO ===================== -->
+    <section class="loader" id="loader" hidden aria-live="polite">
+      <svg class="loader__ecg" viewBox="0 0 600 120" aria-hidden="true">
+        <polyline class="loader__line" points="0,60 150,60 175,20 200,100 225,60 320,60 345,35 370,85 395,60 480,60 505,25 530,95 555,60 600,60"
+          fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <p class="loader__text" id="loaderText">Analisando dados clínicos…</p>
+    </section>
+
+    <!-- ===================== MENSAGEM DE ERRO ===================== -->
+    <section class="notice" id="notice" hidden role="alert"></section>
+
+    <!-- ===================== RESULTADOS ===================== -->
+    <section class="results" id="results" hidden>
+      <!-- Layout: navegação lateral (índice) + conteúdo -->
+      <aside class="toc" id="toc" aria-label="Seções da análise">
+        <p class="toc__title">Seções</p>
+        <nav id="tocNav"></nav>
+      </aside>
+
+      <div class="content" id="content">
+        <!-- A ficha é injetada via JavaScript -->
+      </div>
+    </section>
+
+    <!-- ===================== ESTADO INICIAL / VAZIO ===================== -->
+    <section class="empty" id="empty">
+      <div class="empty__grid">
+        <article class="feature-card">
+          <span class="feature-card__ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M4 5h16v14H4zM4 9h16M9 13h7M9 16h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
+          <h3>Ficha estruturada</h3>
+          <p>Identificação, definição, sintomas, diagnóstico, tratamento e prognóstico em uma só tela.</p>
+        </article>
+        <article class="feature-card">
+          <span class="feature-card__ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 3 4 7v5c0 5 3.4 7.7 8 9 4.6-1.3 8-4 8-9V7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="m9 12 2 2 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <h3>Sinais de alerta</h3>
+          <p>Sintomas que exigem avaliação urgente são destacados com clareza para não passarem despercebidos.</p>
+        </article>
+        <article class="feature-card">
+          <span class="feature-card__ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M6 3v7a6 6 0 0 0 12 0V3M9 3v7M15 3v7M12 16v5M8 21h8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <h3>Variações & diferenciais</h3>
+          <p>Termos amplos (Hepatite, Diabetes, Anemia) expandem em subtipos com diagnósticos diferenciais.</p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <!-- ===================== RODAPÉ ===================== -->
+  <footer class="footer">
+    <p class="footer__disclaimer">
+      <strong>Aviso médico:</strong> conteúdo educacional gerado por inteligência artificial.
+      Não substitui consulta, diagnóstico ou tratamento por profissional de saúde qualificado.
+      Verifique sempre fontes primárias antes de qualquer decisão clínica.
+    </p>
+    <p class="footer__brand">Invictus<span class="brand__dot">.</span>Med · Referência Clínica Inteligente</p>
+  </footer>
+
+  <!-- ===================== PAINEL LATERAL (Histórico / Favoritos) ===================== -->
+  <div class="drawer-scrim" id="drawerScrim" hidden></div>
+  <aside class="drawer" id="drawer" hidden aria-hidden="true">
+    <div class="drawer__head">
+      <h2 class="drawer__title" id="drawerTitle">Histórico</h2>
+      <button class="icon-btn" id="drawerClose" type="button" aria-label="Fechar painel">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="drawer__tools" id="drawerTools"></div>
+    <ul class="drawer__list" id="drawerList"></ul>
+    <p class="drawer__empty" id="drawerEmpty" hidden>Nada por aqui ainda.</p>
+  </aside>
+
+  <!-- Notificação flutuante (toast) -->
+  <div class="toast" id="toast" hidden role="status"></div>
+
+  <script src="script.js"></script>
+</body>
+</html>
