@@ -1,4 +1,74 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0F172A" />
+  <meta name="description" content="Invictus.Med — análise clínica estruturada de doenças, síndromes e condições médicas. Ferramenta de referência para estudantes e profissionais da saúde." />
+  <title>Invictus.Med — Referência Clínica Inteligente</title>
 
+  <!-- Tipografia (fontes web; o site continua funcional com fontes do sistema caso não carreguem) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ===================== CABEÇALHO ===================== -->
+  <header class="topbar">
+    <a class="brand" href="#" aria-label="Invictus.Med — início">
+      <!-- Logo: glifo de pulso/ECG (assinatura visual da marca) -->
+      <span class="brand__mark" aria-hidden="true">
+        <svg viewBox="0 0 64 24" width="40" height="18">
+          <polyline points="0,12 14,12 19,4 24,20 30,12 38,12 42,7 46,17 50,12 64,12"
+                    fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </span>
+      <span class="brand__name">Invictus<span class="brand__dot">.</span>Med</span>
+    </a>
+
+    <nav class="topbar__actions" aria-label="Ações principais">
+      <button class="icon-btn" id="btnHistory" type="button" aria-label="Abrir histórico de pesquisas">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 8v5l3 3M3.05 11a9 9 0 1 1 .5 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 4v4h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span class="icon-btn__label">Histórico</span>
+      </button>
+      <button class="icon-btn" id="btnFavorites" type="button" aria-label="Abrir favoritos">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 17.3 6.2 20.5l1.1-6.5L2.6 9.4l6.5-.9L12 2.6l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+        <span class="icon-btn__label">Favoritos</span>
+      </button>
+      <button class="icon-btn" id="btnTheme" type="button" aria-label="Alternar tema claro/escuro">
+        <svg class="icon-sun" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2v2.5M12 19.5V22M4.2 4.2l1.8 1.8M18 18l1.8 1.8M2 12h2.5M19.5 12H22M4.2 19.8 6 18M18 6l1.8-1.8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <svg class="icon-moon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M21 13.2A8.5 8.5 0 0 1 10.8 3 7 7 0 1 0 21 13.2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+      </button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- ===================== HERO + BUSCA ===================== -->
+    <section class="hero" id="hero">
+      <!-- Linha de ECG ambiente ao fundo (assinatura) -->
+      <svg class="hero__pulse" viewBox="0 0 1200 200" preserveAspectRatio="none" aria-hidden="true">
+        <polyline points="0,100 280,100 320,40 360,160 400,100 520,100 560,70 600,130 640,100 760,100 800,30 840,170 880,100 1010,100 1050,75 1090,125 1130,100 1200,100"
+          fill="none" stroke="currentColor" stroke-width="2" />
+      </svg>
+
+      <div class="hero__inner">
+        <p class="hero__eyebrow">Referência clínica · CID-10 · CID-11</p>
+        <h1 class="hero__title">Pesquise qualquer doença, síndrome ou condição médica</h1>
+        <p class="hero__subtitle">
+          Análise estruturada em segundos: definição, sintomas, diagnóstico, tratamento,
+          fisiopatologia e diferenciais — organizados como uma ficha clínica.
+        </p>
+
+        <!-- Barra de busca -->
+        <div class="search" role="search">
+          <div class="search__field">
+            <svg class="search__icon" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="m20 20-3.2-3.2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <input
+              id="searchInput"
               type="text"
               autocomplete="off"
               spellcheck="false"
