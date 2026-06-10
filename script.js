@@ -24,12 +24,12 @@
    para treinar modelos. Este site só envia o NOME da doença, então
    não há problema — mas nunca digite dados de pacientes na busca.
    ================================================================= */
-const API_KEY = "5bee6991d544ba5ca3f25b058d43a28e41cd0c89";   // ← cole aqui sua chave do Google AI Studio
+const API_KEY = "AQ.Ab8RN6JeRdv7DxgSR4qb0SmiyCR-38wGoxkwUxHbpeoa1SgDQg";   // ← cole aqui sua chave do Google AI Studio
 
 const CONFIG = {
   API_KEY: API_KEY,
   PROVIDER: "gemini",                    // "gemini" (grátis) | "openai" | "anthropic"
-  MODEL: "gemini-2.5-flash",             // modelo gratuito do Gemini
+  MODEL: "gemini-1.5-flash",             // modelo gratuito do Gemini
   MAX_TOKENS: 4096,
   // Endpoints
   GEMINI_URL: "https://generativelanguage.googleapis.com/v1beta/models",
