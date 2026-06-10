@@ -240,7 +240,7 @@ async function fetchAnalysis(termo) {
         },
       }),
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) {const erro = await res.text();alert(erro);throw new Error(`HTTP ${res.status} - ${erro}`);}
     const data = await res.json();
     raw = (data?.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("");
   } else if (CONFIG.PROVIDER === "anthropic") {
@@ -257,8 +257,8 @@ async function fetchAnalysis(termo) {
         max_tokens: CONFIG.MAX_TOKENS,
         messages: [{ role: "user", content: prompt }],
       }),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    });   
+     if (!res.ok) {const erro = await res.text();alert(erro);throw new Error(`HTTP ${res.status} - ${erro}`);}
     const data = await res.json();
     raw = (data.content || []).map(b => b.text || "").join("");
   } else {
@@ -278,7 +278,7 @@ async function fetchAnalysis(termo) {
         ],
       }),
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {const erro = await res.text();alert(erro);throw new Error(`HTTP ${res.status} - ${erro}`);}
     const data = await res.json();
     raw = data?.choices?.[0]?.message?.content || "";
   }
