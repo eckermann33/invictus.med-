@@ -10,26 +10,32 @@
 /* =================================================================
    1) CONFIGURAÇÃO DA IA
    -----------------------------------------------------------------
-   Por padrão, o sistema vem pronto para o GOOGLE GEMINI (tier
-   gratuito). Para ativar, basta criar uma chave em
-   https://aistudio.google.com (sem cartão de crédito) e colá-la
-   abaixo em const API_KEY.
+   Há dois caminhos gratuitos com o Google Gemini:
 
-   Provedores suportados (troque CONFIG.PROVIDER se quiser):
-     • "gemini"    → Google Gemini  (GRÁTIS, padrão recomendado)
-     • "openai"    → OpenAI / GPT    (pago)
-     • "anthropic" → Anthropic Claude (pago)
+   • PROVIDER: "proxy"  (RECOMENDADO) — a chave fica escondida num
+     servidor gratuito (Cloudflare Worker). Veja proxy-worker.js.
+     Configure apenas CONFIG.PROXY_URL com a URL do seu Worker.
+     Neste modo, a const API_KEY abaixo é ignorada.
 
-   ⚠️ Privacidade: o tier gratuito do Gemini pode usar os prompts
-   para treinar modelos. Este site só envia o NOME da doença, então
-   não há problema — mas nunca digite dados de pacientes na busca.
+   • PROVIDER: "gemini" — chama o Google direto do navegador. Mais
+     simples, mas a chave fica VISÍVEL no código. Use só para testes.
+     Neste modo, cole a chave em const API_KEY.
+
+   Provedores pagos opcionais: "openai" e "anthropic".
+
+   ⚠️ Privacidade: este site só envia o NOME da doença para a IA.
+   Nunca digite dados de pacientes na busca.
    ================================================================= */
-const API_KEY = "AQ.Ab8RN6K4tjwr3_VJm1ndNP_YC8IeCogBL2SRnV8zEenWm0FSdw";   // ← cole aqui sua chave do Google AI Studio
+const API_KEY = "INSERIR_CHAVE_AQUI";   // ← só é usada se PROVIDER for "gemini" direto
 
 const CONFIG = {
   API_KEY: API_KEY,
-  PROVIDER: "gemini",                    // "gemini" (grátis) | "openai" | "anthropic"
-  MODEL: "gemini-1.5-flash",             // modelo gratuito do Gemini
+  // "proxy"  = chave escondida no servidor (Cloudflare Worker) — RECOMENDADO
+  // "gemini" = chave direto no navegador (grátis, mas a chave fica visível)
+  // "openai" / "anthropic" = provedores pagos
+  PROVIDER: "proxy",
+  PROXY_URL: "https://invictus-proxy.n9rn6tsb26.workers.dev/",   // ← cole a URL do seu Worker
+  MODEL: "gemini-2.5-flash",
   MAX_TOKENS: 4096,
   // Endpoints
   GEMINI_URL: "https://generativelanguage.googleapis.com/v1beta/models",
@@ -214,6 +220,24 @@ function hideSuggestions() {
    6) CHAMADA À IA
    ================================================================= */
 async function fetchAnalysis(termo) {
+  /* ---- Modo proxy: a chave fica no servidor (Cloudflare Worker) ---- */
+  if (CONFIG.PROVIDER === "proxy") {
+    if (!CONFIG.PROXY_URL || CONFIG.PROXY_URL.includes("INSERIR-URL-DO-WORKER")) {
+      const demo = getDemo(termo);
+      if (demo) return demo;
+      throw new Error("NO_PROXY");
+    }
+    const res = await fetch(CONFIG.PROXY_URL, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ termo }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.erro ? `Servidor: ${data.erro}` : `HTTP ${res.status}`);
+    return data; // o Worker já devolve a ficha em JSON pronta
+  }
+
+  /* ---- Modos diretos (chave no navegador) ---- */
   // Sem chave configurada → tenta demonstração offline
   if (!CONFIG.API_KEY || CONFIG.API_KEY === "INSERIR_CHAVE_AQUI") {
     const demo = getDemo(termo);
@@ -240,7 +264,7 @@ async function fetchAnalysis(termo) {
         },
       }),
     });
-        if (!res.ok) {const erro = await res.text();alert(erro);throw new Error(`HTTP ${res.status} - ${erro}`);}
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     raw = (data?.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("");
   } else if (CONFIG.PROVIDER === "anthropic") {
@@ -257,8 +281,8 @@ async function fetchAnalysis(termo) {
         max_tokens: CONFIG.MAX_TOKENS,
         messages: [{ role: "user", content: prompt }],
       }),
-    });   
-     if (!res.ok) {const erro = await res.text();alert(erro);throw new Error(`HTTP ${res.status} - ${erro}`);}
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     raw = (data.content || []).map(b => b.text || "").join("");
   } else {
@@ -278,7 +302,7 @@ async function fetchAnalysis(termo) {
         ],
       }),
     });
-    if (!res.ok) {const erro = await res.text();alert(erro);throw new Error(`HTTP ${res.status} - ${erro}`);}
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     raw = data?.choices?.[0]?.message?.content || "";
   }
@@ -327,7 +351,12 @@ async function analyze(termRaw) {
 
 function showError(err) {
   let msg;
-  if (err.message === "NO_KEY") {
+  if (err.message === "NO_PROXY") {
+    msg = `<b>Configure o endereço do proxy.</b> No arquivo <code>script.js</code>, em
+      <code>CONFIG.PROXY_URL</code>, cole a URL do seu Cloudflare Worker (veja o
+      <code>README</code> e o <code>proxy-worker.js</code>). Enquanto isso, apenas os exemplos
+      de demonstração (ex.: <code>Hipertensão</code>, <code>Diabetes</code>) funcionam.`;
+  } else if (err.message === "NO_KEY") {
     msg = `<b>Configure a chave da IA.</b> Crie uma chave gratuita em
       <code>aistudio.google.com</code>, abra o arquivo <code>script.js</code> e substitua
       <code>INSERIR_CHAVE_AQUI</code> pela sua chave em <code>const API_KEY</code>.
