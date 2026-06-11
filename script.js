@@ -34,9 +34,9 @@ const CONFIG = {
   // "gemini" = chave direto no navegador (grátis, mas a chave fica visível)
   // "openai" / "anthropic" = provedores pagos
   PROVIDER: "proxy",
-  PROXY_URL: "https://invictus-proxy.n9rn6tsb26.workers.dev/",   // ← cole a URL do seu Worker
+  PROXY_URL: "https://INSERIR-URL-DO-WORKER.workers.dev",   // ← cole a URL do seu Worker
   MODEL: "gemini-2.5-flash",
-  MAX_TOKENS: 4096,
+  MAX_TOKENS: 8192,
   // Endpoints
   GEMINI_URL: "https://generativelanguage.googleapis.com/v1beta/models",
   ANTHROPIC_URL: "https://api.anthropic.com/v1/messages",
@@ -93,9 +93,10 @@ Responda EXCLUSIVAMENTE com um objeto JSON válido (sem texto antes ou depois, s
 }
 
 REGRAS IMPORTANTES:
+- O termo pode descrever um CENÁRIO CLÍNICO com VÁRIAS condições/comorbidades (ex.: "paciente com hipertensão arterial sistêmica, diabetes tipo 2 e obesidade"). Nesse caso: use "nome" como rótulo curto do quadro (ex.: "Quadro clínico: HAS + DM2 + Obesidade"); em "definicao" faça um panorama integrado das comorbidades e como se relacionam; preencha "variacoes" com UMA entrada por condição individual (nome, definicao, gravidade, tratamento); em "tratamento" priorize o manejo integrado; em "complicacoes" destaque os riscos combinados; em "diferenciais" relacione condições associadas.
 - Se o termo for AMPLO (ex.: "Hepatite", "Diabetes", "Anemia"), preencha "variacoes" com os principais tipos/subtipos. Caso contrário, deixe "variacoes" como [].
 - Listas sem dados pertinentes devem ficar vazias ([]). Não invente códigos CID.
-- Seja preciso, conciso e clinicamente correto. Use apenas o JSON.`;
+- Seja CONCISO: no máximo ~6 itens por lista. Responda SOMENTE com o JSON COMPLETO e válido — nunca corte a resposta no meio.`;
 }
 
 /* =================================================================
@@ -111,6 +112,7 @@ const els = {
   suggestions:$("#suggestions"),
   loader:     $("#loader"),
   loaderText: $("#loaderText"),
+  loaderMsg:  $("#loaderMsg"),
   notice:     $("#notice"),
   results:    $("#results"),
   content:    $("#content"),
@@ -319,6 +321,27 @@ function parseJSON(text) {
   return JSON.parse(t);
 }
 
+/* Mensagens que se alternam enquanto a IA "pensa" */
+const THINKING_MSGS = [
+  "Consultando a base clínica",
+  "Analisando sintomas e sinais",
+  "Cruzando diagnósticos diferenciais",
+  "Revisando condutas e tratamentos",
+  "Organizando a ficha clínica",
+];
+let thinkingTimer = null;
+
+function startThinking() {
+  let i = 0;
+  if (els.loaderMsg) els.loaderMsg.textContent = THINKING_MSGS[0];
+  clearInterval(thinkingTimer);
+  thinkingTimer = setInterval(() => {
+    i = (i + 1) % THINKING_MSGS.length;
+    if (els.loaderMsg) els.loaderMsg.textContent = THINKING_MSGS[i];
+  }, 1700);
+}
+function stopThinking() { clearInterval(thinkingTimer); thinkingTimer = null; }
+
 /* =================================================================
    7) FLUXO DE BUSCA
    ================================================================= */
@@ -332,7 +355,7 @@ async function analyze(termRaw) {
   hide(els.empty);
   hide(els.hero);
   show(els.loader);
-  els.loaderText.textContent = `Analisando “${term}”…`;
+  startThinking();
   window.scrollTo({ top: 0, behavior: "smooth" });
 
   try {
@@ -340,9 +363,11 @@ async function analyze(termRaw) {
     currentData = data;
     renderResult(data);
     addToHistory(data.nome || term);
+    stopThinking();
     hide(els.loader);
     show(els.results);
   } catch (err) {
+    stopThinking();
     hide(els.loader);
     showError(err);
     show(els.hero);
