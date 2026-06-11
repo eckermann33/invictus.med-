@@ -34,7 +34,7 @@ const CONFIG = {
   // "gemini" = chave direto no navegador (grátis, mas a chave fica visível)
   // "openai" / "anthropic" = provedores pagos
   PROVIDER: "proxy",
-  PROXY_URL: "https://invictus-proxy.n9rn6tsb26.workers.dev/",   // ← cole a URL do seu Worker
+  PROXY_URL: "https://https://invictus-proxy.n9rn6tsb26.workers.dev/",   // ← cole a URL do seu Worker
   MODEL: "gemini-2.5-flash",
   MAX_TOKENS: 8192,
   // Endpoints
@@ -235,7 +235,10 @@ async function fetchAnalysis(termo) {
       body: JSON.stringify({ termo }),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.erro ? `Servidor: ${data.erro}` : `HTTP ${res.status}`);
+    if (!res.ok) {
+      const extra = data.dica ? ` — ${data.dica}` : "";
+      throw new Error(data.erro ? `Servidor: ${data.erro}${extra}` : `HTTP ${res.status}`);
+    }
     return data; // o Worker já devolve a ficha em JSON pronta
   }
 
@@ -341,6 +344,19 @@ function startThinking() {
   }, 1700);
 }
 function stopThinking() { clearInterval(thinkingTimer); thinkingTimer = null; }
+
+/* Volta para a tela de busca para fazer outra pergunta */
+function resetToSearch() {
+  stopThinking();
+  hide(els.results);
+  hide(els.notice);
+  hide(els.loader);
+  show(els.hero);
+  show(els.empty);
+  els.input.value = "";
+  window.scrollTo({ top: 0, behavior: "smooth" });
+  setTimeout(() => els.input.focus(), 350);
+}
 
 /* =================================================================
    7) FLUXO DE BUSCA
@@ -545,6 +561,12 @@ function renderResult(d) {
   if (d.area_medica) cidParts.push(`<span class="cid"><span>Área</span><span>${escapeHTML(d.area_medica)}</span></span>`);
 
   const head = `
+    <div class="newsearch-bar">
+      <button class="btn-newsearch" id="btnNewSearch" type="button">
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M11 5 4 12l7 7M4 12h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Nova pesquisa
+      </button>
+    </div>
     <section class="fiche-head" id="identificacao">
       ${d.area_medica ? `<span class="fiche-head__area">${escapeHTML(d.area_medica)}</span>` : ""}
       <h1 class="fiche-head__name">${escapeHTML(d.nome || "Resultado")}</h1>
@@ -599,6 +621,7 @@ function bindResultEvents(d) {
   });
 
   // Ações
+  $("#btnNewSearch")?.addEventListener("click", resetToSearch);
   $("#tFav").addEventListener("click", () => toggleFavorite(d));
   $("#tCopy").addEventListener("click", () => copyContent(d));
   $("#tShare").addEventListener("click", () => shareContent(d));
@@ -937,6 +960,10 @@ function bindGlobalEvents() {
   // Exemplos rápidos
   $$(".chip[data-example]").forEach(c =>
     c.addEventListener("click", () => { els.input.value = c.dataset.example; analyze(c.dataset.example); }));
+
+  // Logo volta para a busca
+  const brand = document.querySelector(".brand");
+  if (brand) brand.addEventListener("click", e => { e.preventDefault(); resetToSearch(); });
 
   // Painéis laterais
   $("#btnHistory").addEventListener("click", () => openDrawer("history"));
