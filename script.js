@@ -35,7 +35,7 @@ const CONFIG = {
   // "openai" / "anthropic" = provedores pagos
   PROVIDER: "proxy",
   PROXY_URL: "https://invictus-proxy.n9rn6tsb26.workers.dev/",   // ← cole a URL do seu Worker
-  MODEL: "gemini-2.5-flash",
+  MODEL: "gemma-4-31b-it",
   MAX_TOKENS: 8192,
   // Endpoints
   GEMINI_URL: "https://generativelanguage.googleapis.com/v1beta/models",
