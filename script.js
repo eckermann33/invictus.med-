@@ -26,7 +26,7 @@
    ⚠️ Privacidade: este site só envia o NOME da doença para a IA.
    Nunca digite dados de pacientes na busca.
    ================================================================= */
-const API_KEY = "INSERIR_";   // ← só é usada se PROVIDER for "gemini" direto
+const API_KEY = "INSERIR_CHAVE_AQUI";   // ← só é usada se PROVIDER for "gemini" direto
 
 const CONFIG = {
   API_KEY: API_KEY,
