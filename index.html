@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+ <!DOCTYPE html>
 <html lang="pt-BR" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet" />
 
-  <link rel="stylesheet" href="style.css?v=3" />
+  <link rel="stylesheet" href="style.css?v=4" />
 </head>
 <body>
 
@@ -57,10 +57,10 @@
 
       <div class="hero__inner">
         <p class="hero__eyebrow">Referência clínica · CID-10 · CID-11</p>
-        <h1 class="hero__title">Pesquise qualquer doença, sintomas ou condição médica</h1>
+        <h1 class="hero__title">Pesquise qualquer doença, síndrome ou condição médica</h1>
         <p class="hero__subtitle">
-          Análise estruturada em segundos: definição, sintomas, diagnóstico, tratamento,
-          fisiopatologia e diferenciais — organizados como uma ficha clínica.
+          Análise estruturada em segundos: doenças, síndromes e também <strong>fármacos</strong> —
+          com definição, sintomas, diagnóstico, tratamento, mecanismo de ação e diferenciais.
         </p>
 
         <!-- Barra de busca -->
@@ -72,7 +72,7 @@
               type="text"
               autocomplete="off"
               spellcheck="false"
-              placeholder="Ex.: Hipertensão, Hepatite, Lúpus, Diabetes…"
+              placeholder="Ex.: Hipertensão, Hepatite, Sertralina, Diabetes…"
               aria-label="Nome da doença, síndrome ou condição"
               aria-expanded="false"
               aria-controls="suggestions"
@@ -96,6 +96,7 @@
           <button class="chip" type="button" data-example="Anemia">Anemia</button>
           <button class="chip" type="button" data-example="Lúpus Eritematoso Sistêmico">Lúpus</button>
           <button class="chip" type="button" data-example="Hipertensão Arterial">Hipertensão</button>
+          <button class="chip" type="button" data-example="Sertralina">Sertralina 💊</button>
         </div>
       </div>
     </section>
@@ -158,7 +159,12 @@
         Não substitui consulta, diagnóstico ou tratamento por profissional de saúde qualificado.
         Verifique sempre fontes primárias antes de qualquer decisão clínica.
       </p>
-      <p class="footer__brand">Invictus<span class="brand__dot">.</span>Med · Referência Clínica Inteligente</p>
+      <p class="footer__brand">Invictus<span class="brand__dot">.</span>Med · Referência Clínica Inteligente
+        <span class="footer__beta">beta 1.0</span>
+      </p>
+      <p class="footer__beta-note">Gratuito durante o período beta. Futuramente o acesso poderá se tornar pago, para custear recursos melhores e elevar a qualidade das análises.</p>
+      <p class="footer__feedback">Em beta — encontrou um erro ou tem uma sugestão? <a href="https://www.instagram.com/_eckermann" target="_blank" rel="noopener noreferrer">Fale comigo</a>.</p>
+      <p class="footer__egg" title="Everybody lies.">Aprovado por Dr. House 🩺</p>
     </div>
     <a class="footer__social" href="https://www.instagram.com/_eckermann" target="_blank" rel="noopener noreferrer" aria-label="Instagram do desenvolvedor @_eckermann">
       <span class="footer__dev">Desenvolvido por</span>
@@ -190,6 +196,7 @@
   <!-- Notificação flutuante (toast) -->
   <div class="toast" id="toast" hidden role="status"></div>
 
-  <script src="script.js?v=3"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.2/html2pdf.bundle.min.js"></script>
+  <script src="script.js?v=4"></script>
 </body>
 </html>
