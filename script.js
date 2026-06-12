@@ -26,7 +26,7 @@
    ⚠️ Privacidade: este site só envia o NOME da doença para a IA.
    Nunca digite dados de pacientes na busca.
    ================================================================= */
-const API_KEY = "INSERIR_CHAVE_AQUI";   // ← só é usada se PROVIDER for "gemini" direto
+const API_KEY = "INSERIR_";   // ← só é usada se PROVIDER for "gemini" direto
 
 const CONFIG = {
   API_KEY: API_KEY,
@@ -35,7 +35,7 @@ const CONFIG = {
   // "openai" / "anthropic" = provedores pagos
   PROVIDER: "proxy",
   PROXY_URL: "https://invictus-proxy.n9rn6tsb26.workers.dev/",   // ← cole a URL do seu Worker
-  MODEL: "gemma-4-31b-it",
+  MODEL: "gemini-2.5-flash",
   MAX_TOKENS: 8192,
   // Endpoints
   GEMINI_URL: "https://generativelanguage.googleapis.com/v1beta/models",
@@ -186,6 +186,10 @@ const DICIONARIO = [
   "Endometriose","Síndrome dos Ovários Policísticos","Miomatose Uterina","Pré-eclâmpsia",
   "Meningite","Sepse","Apendicite","Colecistite","Hérnia de Disco","Tendinite","Bursite",
   "Doença de Chagas","Leishmaniose","Malária","Esquistossomose","Toxoplasmose",
+  "Losartana","Enalapril","Hidroclorotiazida","Anlodipino","Metformina","Insulina",
+  "Omeprazol","Sinvastatina","Atorvastatina","Sertralina","Fluoxetina","Risperidona",
+  "Haloperidol","Diazepam","Clonazepam","Amoxicilina","Azitromicina","Dipirona",
+  "Paracetamol","Ibuprofeno","Prednisona","Levotiroxina","Varfarina","Salbutamol",
 ];
 
 function renderSuggestions(query) {
@@ -391,22 +395,28 @@ async function analyze(termRaw) {
 }
 
 function showError(err) {
+  const m = String(err && err.message || "");
   let msg;
-  if (err.message === "NO_PROXY") {
-    msg = `<b>Configure o endereço do proxy.</b> No arquivo <code>script.js</code>, em
-      <code>CONFIG.PROXY_URL</code>, cole a URL do seu Cloudflare Worker (veja o
-      <code>README</code> e o <code>proxy-worker.js</code>). Enquanto isso, apenas os exemplos
-      de demonstração (ex.: <code>Hipertensão</code>, <code>Diabetes</code>) funcionam.`;
-  } else if (err.message === "NO_KEY") {
-    msg = `<b>Configure a chave da IA.</b> Crie uma chave gratuita em
-      <code>aistudio.google.com</code>, abra o arquivo <code>script.js</code> e substitua
-      <code>INSERIR_CHAVE_AQUI</code> pela sua chave em <code>const API_KEY</code>.
-      Sem chave, apenas os exemplos de demonstração (ex.: <code>Hipertensão</code>, <code>Diabetes</code>) funcionam.`;
+  let soft = true; // visual suave (não vermelho) para mensagens ao usuário
+
+  if (/429|limite|limit|quota|exceeded|resource_exhausted/i.test(m)) {
+    // Limite diário/por minuto atingido — mensagem calma, sem jargão
+    msg = `<b>Muitas pesquisas no momento.</b> O site atingiu o limite temporário de consultas.
+      Tente novamente daqui a alguns minutos. 🙂`;
+  } else if (err.message === "NO_PROXY" || err.message === "NO_KEY") {
+    // Aviso de configuração — só aparece para o desenvolvedor, antes de publicar
+    soft = false;
+    msg = `<b>Configuração pendente.</b> A conexão com a IA ainda não foi definida
+      (veja <code>CONFIG.PROXY_URL</code> no <code>script.js</code>). Por enquanto, apenas os
+      exemplos de demonstração funcionam.`;
   } else if (err instanceof SyntaxError) {
-    msg = `<b>Não foi possível interpretar a resposta da IA.</b> Tente novamente ou refine o termo da busca.`;
+    msg = `<b>Não consegui montar a ficha desta vez.</b> Tente novamente ou refine o termo da busca.`;
   } else {
-    msg = `<b>Falha na consulta (${escapeHTML(err.message)}).</b> Verifique sua chave, o modelo configurado e a conexão. Em caso de erro de CORS, use um backend intermediário.`;
+    // Qualquer outra falha → mensagem genérica e tranquila
+    msg = `<b>Não foi possível completar a análise agora.</b> Tente novamente em instantes.`;
   }
+
+  els.notice.className = "notice" + (soft ? " notice--soft" : "");
   els.notice.innerHTML = msg;
   show(els.notice);
 }
@@ -551,14 +561,68 @@ function buildSections(d) {
   return S;
 }
 
+/* Seções específicas para FÁRMACOS (mesmos cards, conteúdo diferente) */
+function buildDrugSections(d) {
+  const f = d.farmaco || {};
+  const has = v => Array.isArray(v) ? v.length : (v && String(v).trim());
+  const S = [];
+
+  if (has(f.para_que_serve) || has(f.doencas_tratadas)) {
+    let h = `<div class="card__head"><span class="card__ico">${ICON.def}</span><h2 class="card__title">Para que serve</h2></div>`;
+    if (has(f.para_que_serve)) h += `<p>${escapeHTML(f.para_que_serve)}</p>`;
+    if (has(f.doencas_tratadas)) h += `<p class="sub">Doenças e condições tratadas</p>${chipList(f.doencas_tratadas, "taglist--common")}`;
+    S.push({ id: "indicacoes", label: "Indicações", html: h });
+  }
+
+  if (has(f.mecanismo_simples) || has(f.mecanismo_avancado)) {
+    S.push({ id: "mecanismo", label: "Mecanismo", html: `
+      <div class="card__head"><span class="card__ico">${ICON.fisio}</span><h2 class="card__title">Mecanismo de ação</h2></div>
+      <div class="tabs">
+        <button class="tab active" type="button" data-tab="m-simples">Simplificado</button>
+        <button class="tab" type="button" data-tab="m-avancado">Avançado (receptores/vias)</button>
+      </div>
+      <div class="tab-panel active" id="m-simples"><p>${escapeHTML(f.mecanismo_simples || "—")}</p></div>
+      <div class="tab-panel" id="m-avancado"><p>${escapeHTML(f.mecanismo_avancado || "—")}</p></div>` });
+  }
+
+  if (has(f.efeitos_adversos_comuns) || has(f.efeitos_adversos_graves)) {
+    let h = `<div class="card__head"><span class="card__ico">${ICON.compl}</span><h2 class="card__title">Efeitos adversos</h2></div>`;
+    if (has(f.efeitos_adversos_comuns)) h += `<p class="sub">Comuns</p>${chipList(f.efeitos_adversos_comuns, "taglist--common")}`;
+    if (has(f.efeitos_adversos_graves)) h += `<p class="sub sub--alert">${ICON.alert} Graves — exigem atenção</p><div class="alert-box">${bulletList(f.efeitos_adversos_graves)}</div>`;
+    S.push({ id: "efeitos", label: "Efeitos adversos", html: h });
+  }
+
+  if (has(f.contraindicacoes)) S.push({ id: "contraindicacoes", label: "Contraindicações", html: `
+    <div class="card__head"><span class="card__ico">${ICON.compl}</span><h2 class="card__title">Contraindicações</h2></div>
+    ${bulletList(f.contraindicacoes)}` });
+
+  if (has(f.interacoes)) S.push({ id: "interacoes", label: "Interações", html: `
+    <div class="card__head"><span class="card__ico">${ICON.diff}</span><h2 class="card__title">Interações medicamentosas</h2></div>
+    ${chipList(f.interacoes)}` });
+
+  if (has(d.referencias)) S.push({ id: "referencias", label: "Referências", html: `
+    <div class="card__head"><span class="card__ico">${ICON.refs}</span><h2 class="card__title">Referências</h2></div>
+    <ol class="refs">${d.referencias.map(r => `<li>${escapeHTML(r)}</li>`).join("")}</ol>` });
+
+  return S;
+}
+
 function renderResult(d) {
   const isFav = isFavorite(d.nome);
+  const isFarmaco = d.tipo === "farmaco" && d.farmaco;
+  const fco = d.farmaco || {};
 
   /* Cabeçalho (identificação + ações) */
   const cidParts = [];
-  if (d.cid10) cidParts.push(`<span class="cid cid--code"><span>CID-10</span><span>${escapeHTML(d.cid10)}</span></span>`);
-  if (d.cid11) cidParts.push(`<span class="cid cid--code"><span>CID-11</span><span>${escapeHTML(d.cid11)}</span></span>`);
-  if (d.area_medica) cidParts.push(`<span class="cid"><span>Área</span><span>${escapeHTML(d.area_medica)}</span></span>`);
+  if (isFarmaco) {
+    if (fco.principio_ativo) cidParts.push(`<span class="cid cid--code"><span>Princípio ativo</span><span>${escapeHTML(fco.principio_ativo)}</span></span>`);
+    if (fco.classe) cidParts.push(`<span class="cid"><span>Classe</span><span>${escapeHTML(fco.classe)}</span></span>`);
+  } else {
+    if (d.cid10) cidParts.push(`<span class="cid cid--code"><span>CID-10</span><span>${escapeHTML(d.cid10)}</span></span>`);
+    if (d.cid11) cidParts.push(`<span class="cid cid--code"><span>CID-11</span><span>${escapeHTML(d.cid11)}</span></span>`);
+    if (d.area_medica) cidParts.push(`<span class="cid"><span>Área</span><span>${escapeHTML(d.area_medica)}</span></span>`);
+  }
+  const areaLabel = isFarmaco ? ("Fármaco" + (d.area_medica ? " · " + d.area_medica : "")) : d.area_medica;
 
   const head = `
     <div class="newsearch-bar">
@@ -568,7 +632,7 @@ function renderResult(d) {
       </button>
     </div>
     <section class="fiche-head" id="identificacao">
-      ${d.area_medica ? `<span class="fiche-head__area">${escapeHTML(d.area_medica)}</span>` : ""}
+      ${areaLabel ? `<span class="fiche-head__area">${escapeHTML(areaLabel)}</span>` : ""}
       <h1 class="fiche-head__name">${escapeHTML(d.nome || "Resultado")}</h1>
       ${d.sinonimos && d.sinonimos.length ? `<p class="fiche-head__syn">Sinônimos: ${escapeHTML(d.sinonimos.join(", "))}</p>` : ""}
       <div class="cid-row">${cidParts.join("")}</div>
@@ -583,7 +647,7 @@ function renderResult(d) {
       </div>
     </section>`;
 
-  const sections = buildSections(d);
+  const sections = isFarmaco ? buildDrugSections(d) : buildSections(d);
   const cards = sections.map(s =>
     `<section class="card" id="${s.id}">${s.html}</section>`).join("");
 
@@ -625,7 +689,7 @@ function bindResultEvents(d) {
   $("#tFav").addEventListener("click", () => toggleFavorite(d));
   $("#tCopy").addEventListener("click", () => copyContent(d));
   $("#tShare").addEventListener("click", () => shareContent(d));
-  $("#tPdf").addEventListener("click", () => { toast("Use “Salvar como PDF” na janela de impressão."); setTimeout(() => window.print(), 400); });
+  $("#tPdf").addEventListener("click", () => generatePDF(d));
   $("#tPrint").addEventListener("click", () => window.print());
 }
 
@@ -648,10 +712,131 @@ function initScrollSpy() {
 /* =================================================================
    9) COPIAR / COMPARTILHAR (texto formatado)
    ================================================================= */
+/* =================================================================
+   PDF DE ESTUDO — documento limpo e contínuo (não formato de impressora)
+   ================================================================= */
+function buildStudyHTML(d) {
+  const esc = escapeHTML;
+  const ul = arr => (arr && arr.length) ? `<ul>${arr.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : "";
+  const sec = (title, inner) => inner ? `<h2>${esc(title)}</h2>${inner}` : "";
+  const p = txt => (txt && String(txt).trim()) ? `<p>${esc(txt)}</p>` : "";
+  let body = "";
+
+  if (d.tipo === "farmaco" && d.farmaco) {
+    const f = d.farmaco;
+    const meta = [f.principio_ativo ? `Princípio ativo: ${esc(f.principio_ativo)}` : "", f.classe ? `Classe: ${esc(f.classe)}` : ""].filter(Boolean).join(" · ");
+    if (meta) body += `<p class="meta">${meta}</p>`;
+    body += sec("Para que serve", p(f.para_que_serve));
+    body += sec("Doenças e condições tratadas", ul(f.doencas_tratadas));
+    body += sec("Mecanismo de ação (simplificado)", p(f.mecanismo_simples));
+    body += sec("Mecanismo de ação (avançado)", p(f.mecanismo_avancado));
+    body += sec("Efeitos adversos comuns", ul(f.efeitos_adversos_comuns));
+    body += sec("Efeitos adversos graves", ul(f.efeitos_adversos_graves));
+    body += sec("Contraindicações", ul(f.contraindicacoes));
+    body += sec("Interações medicamentosas", ul(f.interacoes));
+  } else {
+    const meta = [d.cid10 ? `CID-10: ${esc(d.cid10)}` : "", d.cid11 ? `CID-11: ${esc(d.cid11)}` : "", d.area_medica ? `Área: ${esc(d.area_medica)}` : ""].filter(Boolean).join(" · ");
+    if (meta) body += `<p class="meta">${meta}</p>`;
+    if (d.sinonimos && d.sinonimos.length) body += `<p class="meta">Sinônimos: ${esc(d.sinonimos.join(", "))}</p>`;
+    body += sec("Definição", p(d.definicao));
+    body += sec("Sintomas comuns", ul(d.sintomas_comuns));
+    body += sec("Sintomas incomuns", ul(d.sintomas_raros));
+    body += sec("Sinais de alerta", ul(d.sinais_alerta));
+    const t = d.tratamento || {};
+    body += sec("Tratamento padrão", ul(t.padrao));
+    body += sec("Medicamentos", ul(t.medicamentos));
+    body += sec("Tratamentos complementares", ul(t.complementares));
+    body += sec("Prognóstico", p(t.prognostico));
+    const dg = d.diagnostico || {};
+    body += sec("Exames laboratoriais", ul(dg.laboratoriais));
+    body += sec("Exames de imagem", ul(dg.imagem));
+    body += sec("Critérios diagnósticos", ul(dg.criterios));
+    body += sec("Complicações", ul(d.complicacoes));
+    if (d.variacoes && d.variacoes.length) {
+      body += `<h2>Variações</h2>` + d.variacoes.map(v =>
+        `<p><b>${esc(v.nome || "")}</b>${v.gravidade ? ` (${esc(v.gravidade)})` : ""}${v.definicao ? ` — ${esc(v.definicao)}` : ""}` +
+        `${v.transmissao ? `<br><i>Transmissão:</i> ${esc(v.transmissao)}` : ""}${v.tratamento ? `<br><i>Tratamento:</i> ${esc(v.tratamento)}` : ""}</p>`).join("");
+    }
+    body += sec("Diagnósticos diferenciais", ul(d.diferenciais));
+    const e = d.epidemiologia || {};
+    const epi = [e.prevalencia && `Prevalência: ${esc(e.prevalencia)}`, e.faixa_etaria && `Faixa etária: ${esc(e.faixa_etaria)}`, e.sexo && `Sexo: ${esc(e.sexo)}`, e.distribuicao_geografica && `Distribuição: ${esc(e.distribuicao_geografica)}`].filter(Boolean);
+    if (epi.length) body += `<h2>Epidemiologia</h2>${ul(epi)}`;
+    const fp = d.fisiopatologia || {};
+    body += sec("Fisiopatologia (simplificada)", p(fp.simples));
+    body += sec("Fisiopatologia (avançada)", p(fp.avancada));
+  }
+  if (d.referencias && d.referencias.length) body += sec("Referências", ul(d.referencias));
+
+  return `<div id="pdfDoc" style="width:720px;padding:36px 40px;background:#fff;color:#1a1a1a;font-family:Arial,Helvetica,sans-serif;line-height:1.55;font-size:14px;box-sizing:border-box;">
+    <div style="border-bottom:3px solid #10B981;padding-bottom:12px;margin-bottom:18px;">
+      <div style="font-size:13px;color:#10B981;font-weight:bold;letter-spacing:0.5px;">INVICTUS.MED · FICHA DE ESTUDO</div>
+      <div style="font-size:26px;font-weight:bold;color:#0B1F18;margin-top:4px;">${esc(d.nome || "Ficha")}</div>
+    </div>
+    <style>
+      #pdfDoc h2{font-size:16px;color:#0B5; color:#0B6B4F;margin:18px 0 6px;border-bottom:1px solid #e2e2e2;padding-bottom:3px;}
+      #pdfDoc p{margin:6px 0;}
+      #pdfDoc ul{margin:6px 0 6px 0;padding-left:20px;}
+      #pdfDoc li{margin:3px 0;}
+      #pdfDoc .meta{color:#555;font-size:13px;}
+    </style>
+    ${body}
+    <p style="margin-top:26px;padding-top:12px;border-top:1px solid #e2e2e2;color:#888;font-size:11px;">
+      Conteúdo educacional gerado por inteligência artificial — não substitui avaliação, diagnóstico ou conduta de profissional de saúde. Invictus.Med (beta).
+    </p>
+  </div>`;
+}
+
+function generatePDF(d) {
+  // Sem a biblioteca (CDN não carregou) → cai para impressão do navegador
+  if (typeof html2pdf === "undefined") {
+    toast("Gerando via impressão — escolha “Salvar como PDF”.");
+    setTimeout(() => window.print(), 300);
+    return;
+  }
+  const wrapper = document.createElement("div");
+  wrapper.innerHTML = buildStudyHTML(d);
+  const el = wrapper.firstElementChild;
+  el.style.position = "fixed"; el.style.left = "-9999px"; el.style.top = "0";
+  document.body.appendChild(el);
+  toast("Gerando PDF…");
+
+  const nomeArquivo = "Invictus-Med-" + String(d.nome || "ficha").normalize("NFD").replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "-").slice(0, 40);
+  const opt = {
+    margin: [12, 10, 14, 10],
+    filename: `${nomeArquivo}.pdf`,
+    image: { type: "jpeg", quality: 0.96 },
+    html2canvas: { scale: 2, backgroundColor: "#ffffff", windowWidth: 800 },
+    jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+    pagebreak: { mode: ["css", "legacy"] },
+  };
+  html2pdf().set(opt).from(el).save()
+    .then(() => el.remove())
+    .catch(() => { el.remove(); toast("Não foi possível gerar o PDF."); });
+}
+
 function dataToText(d) {
   const L = [];
   const list = a => (a && a.length) ? a.join(", ") : "—";
   L.push(`${d.nome || ""}`);
+
+  // Fármaco → texto específico
+  if (d.tipo === "farmaco" && d.farmaco) {
+    const f = d.farmaco;
+    if (f.principio_ativo) L.push(`Princípio ativo: ${f.principio_ativo}`);
+    if (f.classe) L.push(`Classe: ${f.classe}`);
+    if (f.para_que_serve) L.push(`\nPARA QUE SERVE\n${f.para_que_serve}`);
+    if (f.doencas_tratadas?.length) L.push(`\nDOENÇAS TRATADAS\n${list(f.doencas_tratadas)}`);
+    if (f.mecanismo_simples) L.push(`\nMECANISMO (simples)\n${f.mecanismo_simples}`);
+    if (f.mecanismo_avancado) L.push(`\nMECANISMO (avançado)\n${f.mecanismo_avancado}`);
+    if (f.efeitos_adversos_comuns?.length) L.push(`\nEFEITOS ADVERSOS COMUNS\n• ${f.efeitos_adversos_comuns.join("\n• ")}`);
+    if (f.efeitos_adversos_graves?.length) L.push(`\n⚠ EFEITOS ADVERSOS GRAVES\n• ${f.efeitos_adversos_graves.join("\n• ")}`);
+    if (f.contraindicacoes?.length) L.push(`\nCONTRAINDICAÇÕES\n${list(f.contraindicacoes)}`);
+    if (f.interacoes?.length) L.push(`\nINTERAÇÕES\n${list(f.interacoes)}`);
+    if (d.referencias?.length) L.push(`\nREFERÊNCIAS\n${d.referencias.join("\n")}`);
+    L.push(`\n— Gerado por Invictus.Med (conteúdo educacional; não substitui avaliação médica).`);
+    return L.join("\n");
+  }
+
   if (d.cid10) L.push(`CID-10: ${d.cid10}${d.cid11 ? " · CID-11: " + d.cid11 : ""}`);
   if (d.area_medica) L.push(`Área médica: ${d.area_medica}`);
   if (d.sinonimos?.length) L.push(`Sinônimos: ${list(d.sinonimos)}`);
