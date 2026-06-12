@@ -240,8 +240,10 @@ async function fetchAnalysis(termo) {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      const extra = data.dica ? ` — ${data.dica}` : "";
-      throw new Error(data.erro ? `Servidor: ${data.erro}${extra}` : `HTTP ${res.status}`);
+      // Cria um erro com o código técnico do Worker anexado (para o cantinho discreto)
+      const e = new Error(data.erro || `HTTP ${res.status}`);
+      e.codigo = data.codigo || `HTTP-${res.status}`;
+      throw e;
     }
     return data; // o Worker já devolve a ficha em JSON pronta
   }
@@ -396,11 +398,12 @@ async function analyze(termRaw) {
 
 function showError(err) {
   const m = String(err && err.message || "");
+  const codigo = (err && err.codigo) ? String(err.codigo) : "ERR";
   let msg;
   let soft = true; // visual suave (não vermelho) para mensagens ao usuário
 
-  if (/429|limite|limit|quota|exceeded|resource_exhausted/i.test(m)) {
-    // Limite diário/por minuto atingido — mensagem calma, sem jargão
+  if (/429|limite|limit|quota|exceeded|resource_exhausted/i.test(m + " " + codigo)) {
+    // Limite atingido — mensagem calma, sem jargão
     msg = `<b>Muitas pesquisas no momento.</b> O site atingiu o limite temporário de consultas.
       Tente novamente daqui a alguns minutos. 🙂`;
   } else if (err.message === "NO_PROXY" || err.message === "NO_KEY") {
@@ -416,8 +419,9 @@ function showError(err) {
     msg = `<b>Não foi possível completar a análise agora.</b> Tente novamente em instantes.`;
   }
 
+  // Código técnico pequenininho — sempre visível para diagnóstico, sem revelar o motivo
   els.notice.className = "notice" + (soft ? " notice--soft" : "");
-  els.notice.innerHTML = msg;
+  els.notice.innerHTML = msg + `<span class="notice__code">cód. ${escapeHTML(codigo)}</span>`;
   show(els.notice);
 }
 
