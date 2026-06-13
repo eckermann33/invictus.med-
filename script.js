@@ -50,8 +50,9 @@ const CONFIG = {
    Adicione/remova quantos quiser, no formato { nome: "...", url: "..." },
    ================================================================= */
 const PROJECTS = [
-  { nome: "O Café dos Espelhos (livro)", url: "https://www.amazon.com.br" },
-  { nome: "Instagram — @_eckermann", url: "https://www.instagram.com/_eckermann" },
+   { nome: "Teste para pratica de Neuro", url: "https://eckermann33.github.io/prova-neuro-/" },
+   { nome: "Conversos de arquivos", url: "https://eckermann33.github.io/conversor-de-arquivos/" },
+   { nome: "Instagram — @_eckermann", url: "https://www.instagram.com/_eckermann" },
   // { nome: "Outro projeto", url: "https://..." },
 ];
 
