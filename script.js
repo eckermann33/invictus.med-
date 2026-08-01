@@ -37,6 +37,10 @@ const CONFIG = {
   PROXY_URL: "https://invictus-proxy.n9rn6tsb26.workers.dev/",   // ← URL do seu Worker
   MODEL: "gemini-2.5-flash",
   MAX_TOKENS: 8192,
+  // Tempo máximo de espera por uma resposta (ms). Evita o carregamento infinito.
+  TIMEOUT_MS: 45000,
+  // Tamanho máximo do termo enviado à IA (evita payloads abusivos).
+  MAX_TERM_LEN: 400,
   // Endpoints
   GEMINI_URL: "https://generativelanguage.googleapis.com/v1beta/models",
   ANTHROPIC_URL: "https://api.anthropic.com/v1/messages",
@@ -100,6 +104,28 @@ Responda EXCLUSIVAMENTE com um objeto JSON válido (sem texto antes ou depois, s
   "fisiopatologia": {
     "simples": "explicação simplificada para leigos",
     "avancada": "explicação detalhada para estudantes de medicina"
+  },
+  "referencias": ["fontes médicas reconhecidas utilizadas"]
+}
+
+SE O TERMO FOR UM FÁRMACO / MEDICAMENTO (ex.: "Sertralina", "Metformina", "Omeprazol"), ignore o esquema acima e responda com ESTE outro esquema:
+
+{
+  "nome": "nome do fármaco",
+  "tipo": "farmaco",
+  "area_medica": "especialidade(s) em que é mais usado",
+  "sinonimos": ["nomes comerciais e sinônimos"],
+  "farmaco": {
+    "principio_ativo": "",
+    "classe": "classe farmacológica",
+    "para_que_serve": "explicação objetiva (2 a 4 frases)",
+    "doencas_tratadas": ["condições tratadas"],
+    "mecanismo_simples": "mecanismo de ação em linguagem acessível",
+    "mecanismo_avancado": "mecanismo detalhado (receptores, vias, farmacocinética)",
+    "efeitos_adversos_comuns": [],
+    "efeitos_adversos_graves": [],
+    "contraindicacoes": [],
+    "interacoes": ["interações medicamentosas relevantes"]
   },
   "referencias": ["fontes médicas reconhecidas utilizadas"]
 }
@@ -180,6 +206,44 @@ const store = {
   },
 };
 
+/* Lista salva no localStorage, já higienizada (descarta itens corrompidos) */
+function readList(key) {
+  const raw = store.get(key, []);
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(x => x && typeof x.nome === "string" && x.nome.trim());
+}
+
+/* Erro com código técnico anexado (usado no cantinho discreto da mensagem) */
+function errWithCode(message, codigo) {
+  const e = new Error(message);
+  e.codigo = codigo || "ERR";
+  return e;
+}
+const codeOf = err => (err && err.codigo) ? String(err.codigo) : "";
+
+/* Copiar texto — usa a API moderna e cai para um método antigo se ela falhar
+   (o clipboard só existe em contexto seguro: https:// ou localhost). */
+async function copyToClipboard(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch { /* segue para o método reserva */ }
+
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.cssText = "position:fixed;top:-1000px;opacity:0;";
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return ok;
+  } catch { return false; }
+}
+
 /* =================================================================
    5) SUGESTÕES AUTOMÁTICAS (lista interna de condições)
    ================================================================= */
@@ -208,6 +272,16 @@ const DICIONARIO = [
   "Paracetamol","Ibuprofeno","Prednisona","Levotiroxina","Varfarina","Salbutamol",
 ];
 
+/* Destaca o trecho pesquisado sem quebrar o escape de HTML
+   (fatiar antes de escapar evita marcar posições erradas em termos com &, < ou "). */
+function highlightMatch(text, q) {
+  const i = text.toLowerCase().indexOf(q);
+  if (i === -1) return escapeHTML(text);
+  return escapeHTML(text.slice(0, i))
+    + `<mark>${escapeHTML(text.slice(i, i + q.length))}</mark>`
+    + escapeHTML(text.slice(i + q.length));
+}
+
 function renderSuggestions(query) {
   const q = query.trim().toLowerCase();
   if (q.length < 1) { hideSuggestions(); return; }
@@ -218,50 +292,101 @@ function renderSuggestions(query) {
 
   if (!matches.length) { hideSuggestions(); return; }
 
-  els.suggestions.innerHTML = matches.map((m, i) => {
-    const re = new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "ig");
-    const html = escapeHTML(m).replace(re, "<mark>$1</mark>");
-    return `<li role="option" data-val="${escapeHTML(m)}" aria-selected="false">
-      <span class="s-ico"><svg viewBox="0 0 24 24" width="16" height="16"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="m20 20-3-3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
-      <span>${html}</span>
-    </li>`;
-  }).join("");
+  els.suggestions.innerHTML = matches.map((m, i) =>
+    `<li id="sugg-${i}" role="option" data-val="${escapeHTML(m)}" aria-selected="false">
+      <span class="s-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="m20 20-3-3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
+      <span>${highlightMatch(m, q)}</span>
+    </li>`).join("");
 
   suggIndex = -1;
   els.suggestions.hidden = false;
   els.input.setAttribute("aria-expanded", "true");
+  els.input.removeAttribute("aria-activedescendant");
 }
 
 function hideSuggestions() {
   els.suggestions.hidden = true;
   els.input.setAttribute("aria-expanded", "false");
+  els.input.removeAttribute("aria-activedescendant");
   suggIndex = -1;
 }
 
 /* =================================================================
    6) CHAMADA À IA
    ================================================================= */
-async function fetchAnalysis(termo) {
+/* O Worker está configurado? (aceita tanto o placeholder antigo quanto vazio) */
+const isProxyConfigured = () =>
+  Boolean(CONFIG.PROXY_URL) && !/INSERIR[-_]URL/i.test(CONFIG.PROXY_URL);
+
+/* fetch com prazo máximo + cancelamento externo.
+   Sem isso, uma resposta que nunca chega deixa o loader girando para sempre. */
+async function fetchWithTimeout(url, init = {}, outerSignal) {
+  const ctrl = new AbortController();
+  const abortNow = () => ctrl.abort();
+  if (outerSignal) {
+    if (outerSignal.aborted) ctrl.abort();
+    else outerSignal.addEventListener("abort", abortNow, { once: true });
+  }
+  const timer = setTimeout(abortNow, CONFIG.TIMEOUT_MS);
+
+  try {
+    return await fetch(url, { ...init, signal: ctrl.signal });
+  } catch (e) {
+    if (e && e.name === "AbortError") {
+      // Cancelado por uma nova busca do usuário × estourou o tempo: são coisas diferentes
+      throw outerSignal && outerSignal.aborted
+        ? errWithCode("CANCELLED", "CANCELLED")
+        : errWithCode("TIMEOUT", "TIMEOUT");
+    }
+    throw errWithCode(e && e.message || "NETWORK", "REDE");
+  } finally {
+    clearTimeout(timer);
+    if (outerSignal) outerSignal.removeEventListener("abort", abortNow);
+  }
+}
+
+/* Chamada única ao Worker — usada pela ficha, pelo estudo de caso,
+   pelas ferramentas de estudo e pelas referências em ABNT. */
+async function postProxy(payload, outerSignal) {
+  if (!isProxyConfigured()) throw errWithCode("NO_PROXY", "NO_PROXY");
+
+  const res = await fetchWithTimeout(CONFIG.PROXY_URL, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  }, outerSignal);
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    // Erro com o código técnico do Worker anexado (para o cantinho discreto)
+    throw errWithCode(data.erro || `HTTP ${res.status}`, data.codigo || `HTTP-${res.status}`);
+  }
+  return data;
+}
+
+/* A resposta parece mesmo uma ficha clínica? Um objeto vazio renderizaria
+   uma tela sem conteúdo — melhor avisar que não deu certo. */
+function isFichaValida(d) {
+  if (!d || typeof d !== "object" || Array.isArray(d)) return false;
+  const texto = v => typeof v === "string" && v.trim();
+  const lista = v => Array.isArray(v) && v.length > 0;
+  return Boolean(
+    texto(d.nome) || texto(d.definicao) || lista(d.sintomas_comuns) ||
+    lista(d.variacoes) || (d.farmaco && typeof d.farmaco === "object")
+  );
+}
+
+async function fetchAnalysis(termo, signal) {
   /* ---- Modo proxy: a chave fica no servidor (Cloudflare Worker) ---- */
   if (CONFIG.PROVIDER === "proxy") {
-    if (!CONFIG.PROXY_URL || CONFIG.PROXY_URL.includes("INSERIR-URL-DO-WORKER")) {
+    if (!isProxyConfigured()) {
       const demo = getDemo(termo);
       if (demo) return demo;
-      throw new Error("NO_PROXY");
+      throw errWithCode("NO_PROXY", "NO_PROXY");
     }
-    const res = await fetch(CONFIG.PROXY_URL, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ termo }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      // Cria um erro com o código técnico do Worker anexado (para o cantinho discreto)
-      const e = new Error(data.erro || `HTTP ${res.status}`);
-      e.codigo = data.codigo || `HTTP-${res.status}`;
-      throw e;
-    }
-    return data; // o Worker já devolve a ficha em JSON pronta
+    const data = await postProxy({ termo }, signal); // o Worker devolve a ficha pronta
+    if (!isFichaValida(data)) throw errWithCode("BAD_SHAPE", "FICHA");
+    return data;
   }
 
   /* ---- Modos diretos (chave no navegador) ---- */
@@ -269,7 +394,7 @@ async function fetchAnalysis(termo) {
   if (!CONFIG.API_KEY || CONFIG.API_KEY === "INSERIR_CHAVE_AQUI") {
     const demo = getDemo(termo);
     if (demo) return demo;
-    throw new Error("NO_KEY");
+    throw errWithCode("NO_KEY", "NO_KEY");
   }
 
   const prompt = buildPrompt(termo);
@@ -279,7 +404,7 @@ async function fetchAnalysis(termo) {
     // Endpoint nativo do Gemini — funciona direto do navegador (CORS ok).
     // responseMimeType: "application/json" força a resposta a vir só em JSON.
     const url = `${CONFIG.GEMINI_URL}/${CONFIG.MODEL}:generateContent?key=${encodeURIComponent(CONFIG.API_KEY)}`;
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -290,12 +415,12 @@ async function fetchAnalysis(termo) {
           responseMimeType: "application/json",
         },
       }),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    }, signal);
+    if (!res.ok) throw errWithCode(`HTTP ${res.status}`, `HTTP-${res.status}`);
     const data = await res.json();
     raw = (data?.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("");
   } else if (CONFIG.PROVIDER === "anthropic") {
-    const res = await fetch(CONFIG.ANTHROPIC_URL, {
+    const res = await fetchWithTimeout(CONFIG.ANTHROPIC_URL, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -308,13 +433,13 @@ async function fetchAnalysis(termo) {
         max_tokens: CONFIG.MAX_TOKENS,
         messages: [{ role: "user", content: prompt }],
       }),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    }, signal);
+    if (!res.ok) throw errWithCode(`HTTP ${res.status}`, `HTTP-${res.status}`);
     const data = await res.json();
     raw = (data.content || []).map(b => b.text || "").join("");
   } else {
     // OpenAI-compatível
-    const res = await fetch(CONFIG.OPENAI_URL, {
+    const res = await fetchWithTimeout(CONFIG.OPENAI_URL, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -328,13 +453,15 @@ async function fetchAnalysis(termo) {
           { role: "user", content: prompt },
         ],
       }),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    }, signal);
+    if (!res.ok) throw errWithCode(`HTTP ${res.status}`, `HTTP-${res.status}`);
     const data = await res.json();
     raw = data?.choices?.[0]?.message?.content || "";
   }
 
-  return parseJSON(raw);
+  const ficha = parseJSON(raw);
+  if (!isFichaValida(ficha)) throw errWithCode("BAD_SHAPE", "FICHA");
+  return ficha;
 }
 
 /* Extrai e valida o JSON da resposta (tolerante a crases/texto extra) */
@@ -369,7 +496,11 @@ function stopThinking() { clearInterval(thinkingTimer); thinkingTimer = null; }
 
 /* Volta para a tela de busca para fazer outra pergunta */
 function resetToSearch() {
+  if (activeSearch) { activeSearch.abort(); activeSearch = null; }
+  searchSeq++;                 // invalida qualquer resposta ainda a caminho
+  setBusy(false);
   stopThinking();
+  hide(els.studyView);
   hide(els.results);
   hide(els.notice);
   hide(els.loader);
@@ -383,9 +514,28 @@ function resetToSearch() {
 /* =================================================================
    7) FLUXO DE BUSCA
    ================================================================= */
+let activeSearch = null;   // AbortController da busca em andamento
+let searchSeq = 0;         // descarta respostas que chegam fora de ordem
+
+/* Trava/destrava a interface enquanto a IA responde */
+function setBusy(busy) {
+  if (els.analyze) {
+    els.analyze.disabled = busy;
+    els.analyze.setAttribute("aria-busy", busy ? "true" : "false");
+  }
+  if (els.loader) els.loader.setAttribute("aria-busy", busy ? "true" : "false");
+}
+
 async function analyze(termRaw) {
-  const term = (termRaw ?? els.input.value).trim();
+  const term = (termRaw ?? els.input.value).trim().slice(0, CONFIG.MAX_TERM_LEN);
   if (!term) { els.input.focus(); return; }
+
+  // Uma busca nova cancela a anterior — sem isso, a resposta mais lenta
+  // poderia sobrescrever a mais recente na tela.
+  if (activeSearch) activeSearch.abort();
+  const ctrl = new AbortController();
+  activeSearch = ctrl;
+  const seq = ++searchSeq;
 
   hideSuggestions();
   hide(els.notice);
@@ -394,11 +544,13 @@ async function analyze(termRaw) {
   hide(els.empty);
   hide(els.hero);
   show(els.loader);
+  setBusy(true);
   startThinking();
   window.scrollTo({ top: 0, behavior: "smooth" });
 
   try {
-    const data = await fetchAnalysis(term);
+    const data = await fetchAnalysis(term, ctrl.signal);
+    if (seq !== searchSeq) return;              // resposta obsoleta
     currentData = data;
     renderResult(data);
     addToHistory(data.nome || term);
@@ -406,16 +558,19 @@ async function analyze(termRaw) {
     hide(els.loader);
     show(els.results);
   } catch (err) {
+    if (seq !== searchSeq || codeOf(err) === "CANCELLED") return;
     stopThinking();
     hide(els.loader);
     showError(err);
     show(els.hero);
+  } finally {
+    if (seq === searchSeq) { setBusy(false); activeSearch = null; }
   }
 }
 
 function showError(err) {
   const m = String(err && err.message || "");
-  const codigo = (err && err.codigo) ? String(err.codigo) : "ERR";
+  const codigo = codeOf(err) || "ERR";
   let msg;
   let soft = true; // visual suave (não vermelho) para mensagens ao usuário
 
@@ -423,13 +578,18 @@ function showError(err) {
     // Limite atingido — mensagem calma, sem jargão
     msg = `<b>Muitas pesquisas no momento.</b> O site atingiu o limite temporário de consultas.
       Tente novamente daqui a alguns minutos. 🙂`;
-  } else if (err.message === "NO_PROXY" || err.message === "NO_KEY") {
+  } else if (m === "NO_PROXY" || m === "NO_KEY") {
     // Aviso de configuração — só aparece para o desenvolvedor, antes de publicar
     soft = false;
     msg = `<b>Configuração pendente.</b> A conexão com a IA ainda não foi definida
       (veja <code>CONFIG.PROXY_URL</code> no <code>script.js</code>). Por enquanto, apenas os
       exemplos de demonstração funcionam.`;
-  } else if (err instanceof SyntaxError) {
+  } else if (codigo === "TIMEOUT") {
+    msg = `<b>A análise está demorando mais que o normal.</b> A conexão pode estar instável —
+      tente novamente em instantes.`;
+  } else if (codigo === "REDE") {
+    msg = `<b>Sem conexão com o servidor.</b> Verifique sua internet e tente de novo.`;
+  } else if (codigo === "FICHA" || err instanceof SyntaxError) {
     msg = `<b>Não consegui montar a ficha desta vez.</b> Tente novamente ou refine o termo da busca.`;
   } else {
     // Qualquer outra falha → mensagem genérica e tranquila
@@ -664,7 +824,7 @@ function renderResult(d) {
       ${d.sinonimos && d.sinonimos.length ? `<p class="fiche-head__syn">Sinônimos: ${escapeHTML(d.sinonimos.join(", "))}</p>` : ""}
       <div class="cid-row">${cidParts.join("")}</div>
       <div class="toolbar">
-        <button class="tool ${isFav ? "is-active" : ""}" id="tFav" type="button">
+        <button class="tool ${isFav ? "is-active" : ""}" id="tFav" type="button" aria-pressed="${isFav ? "true" : "false"}">
           <svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 17.3 6.2 20.5l1.1-6.5L2.6 9.4l6.5-.9L12 2.6l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
           <span>${isFav ? "Favoritado" : "Favoritar"}</span></button>
         <button class="tool" id="tCopy" type="button"><svg viewBox="0 0 24 24" width="16" height="16"><rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10" fill="none" stroke="currentColor" stroke-width="2"/></svg><span>Copiar</span></button>
@@ -734,15 +894,21 @@ function bindResultEvents(d) {
 
   // Ações
   $("#btnNewSearch")?.addEventListener("click", resetToSearch);
-  $("#tFav").addEventListener("click", () => toggleFavorite(d));
-  $("#tCopy").addEventListener("click", () => copyContent(d));
-  $("#tShare").addEventListener("click", () => shareContent(d));
-  $("#tPdf").addEventListener("click", () => generatePDF(d));
-  $("#tPrint").addEventListener("click", () => openPrintWindow(d));
+  $("#tFav")?.addEventListener("click", () => toggleFavorite(d));
+  $("#tCopy")?.addEventListener("click", () => copyContent(d));
+  $("#tShare")?.addEventListener("click", () => shareContent(d));
+  $("#tPdf")?.addEventListener("click", () => generatePDF(d));
+  $("#tPrint")?.addEventListener("click", () => openPrintWindow(d));
 }
 
 /* Scrollspy: destaca a seção visível no índice */
+let scrollSpyObs = null;
+
 function initScrollSpy() {
+  // Cada nova ficha cria um observador; sem desligar o anterior eles se
+  // acumulam a cada pesquisa e continuam observando elementos já removidos.
+  if (scrollSpyObs) { scrollSpyObs.disconnect(); scrollSpyObs = null; }
+
   const links = $$("#tocNav a");
   if (!links.length || !("IntersectionObserver" in window)) return;
   const map = new Map(links.map(a => [a.getAttribute("href").slice(1), a]));
@@ -755,6 +921,7 @@ function initScrollSpy() {
     });
   }, { rootMargin: "-40% 0px -55% 0px" });
   $$(".card, .fiche-head", els.content).forEach(sec => obs.observe(sec));
+  scrollSpyObs = obs;
 }
 
 /* =================================================================
@@ -821,7 +988,7 @@ function buildStudyHTML(d) {
       <div style="font-size:26px;font-weight:bold;color:#0B1F18;margin-top:4px;">${esc(d.nome || "Ficha")}</div>
     </div>
     <style>
-      #pdfDoc h2{font-size:16px;color:#0B5; color:#0B6B4F;margin:18px 0 6px;border-bottom:1px solid #e2e2e2;padding-bottom:3px;}
+      #pdfDoc h2{font-size:16px;color:#0B6B4F;margin:18px 0 6px;border-bottom:1px solid #e2e2e2;padding-bottom:3px;}
       #pdfDoc p{margin:6px 0;}
       #pdfDoc ul{margin:6px 0 6px 0;padding-left:20px;}
       #pdfDoc li{margin:3px 0;}
@@ -966,21 +1133,14 @@ async function generateStudy(modo) {
   out.innerHTML = `<div class="case-loading">${msgs[modo] || "Gerando…"}</div>`;
 
   try {
-    if (!CONFIG.PROXY_URL || CONFIG.PROXY_URL.includes("INSERIR-URL-DO-WORKER")) throw new Error("NO_PROXY");
-    const res = await fetch(CONFIG.PROXY_URL, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ modo, termo: tema }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) { const e = new Error(data.erro || "ERR"); e.codigo = data.codigo; throw e; }
+    const data = await postProxy({ modo, termo: tema.slice(0, CONFIG.MAX_TERM_LEN) });
 
     if (modo === "quiz") renderQuiz(data.perguntas || [], out);
     else if (modo === "flashcards") renderFlashcards(data.cards || [], out);
     else if (modo === "resumo") renderResumo(data, out);
     else if (modo === "mapa") renderMapa(data, out);
   } catch (e) {
-    const cod = (e && e.codigo) ? e.codigo : "ERR";
+    const cod = codeOf(e) || "ERR";
     out.innerHTML = `<div class="case-err">Não foi possível gerar agora. Tente novamente em instantes.
       <span class="case-err__code">cód. ${escapeHTML(cod)}</span></div>`;
   }
@@ -1089,23 +1249,17 @@ async function generateABNT(d, btn) {
   const original = btn ? btn.textContent : "";
   if (btn) { btn.disabled = true; btn.textContent = "Gerando ABNT…"; }
   try {
-    if (!CONFIG.PROXY_URL || CONFIG.PROXY_URL.includes("INSERIR-URL-DO-WORKER")) throw new Error("NO_PROXY");
-    const res = await fetch(CONFIG.PROXY_URL, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ modo: "abnt", termo: d.nome, referencias: d.referencias || [] }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) { const e = new Error(data.erro || "ERR"); e.codigo = data.codigo; throw e; }
+    const data = await postProxy({ modo: "abnt", termo: d.nome, referencias: d.referencias || [] });
 
     const texto = Array.isArray(data.abnt) ? data.abnt.join("\n\n") : String(data.abnt || "").trim();
-    if (!texto) throw new Error("vazio");
+    if (!texto) throw errWithCode("vazio", "VAZIO");
 
-    await navigator.clipboard.writeText(texto);
+    const copiou = await copyToClipboard(texto);
+    if (!copiou) throw errWithCode("clipboard", "COPIA");
+
     toast("Referências copiadas em ABNT! 📋");
     if (btn) { btn.textContent = "✓ Copiado em ABNT"; setTimeout(() => { btn.disabled = false; btn.textContent = original; }, 2500); }
   } catch (e) {
-    // Fallback: se o clipboard falhar, mostra para copiar manualmente
     toast("Não foi possível copiar agora. Tente novamente.");
     if (btn) { btn.disabled = false; btn.textContent = original; }
   }
@@ -1122,18 +1276,11 @@ async function generateCase(d) {
   out.innerHTML = `<div class="case-loading">Montando um caso clínico…</div>`;
 
   try {
-    if (!CONFIG.PROXY_URL || CONFIG.PROXY_URL.includes("INSERIR-URL-DO-WORKER")) throw new Error("NO_PROXY");
-    const res = await fetch(CONFIG.PROXY_URL, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ modo: "caso", termo: d.nome }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) { const e = new Error(data.erro || "ERR"); e.codigo = data.codigo; throw e; }
+    const data = await postProxy({ modo: "caso", termo: d.nome });
     renderCase(data, out, d);
     if (btn) btn.style.display = "none";
   } catch (e) {
-    const cod = (e && e.codigo) ? e.codigo : "ERR";
+    const cod = codeOf(e) || "ERR";
     out.innerHTML = `<div class="case-err">Não foi possível gerar o caso agora. Tente novamente em instantes.
       <span class="case-err__code">cód. ${escapeHTML(cod)}</span></div>`;
     if (btn) { btn.disabled = false; btn.textContent = "📋 Gerar estudo de caso"; }
@@ -1225,18 +1372,19 @@ function dataToText(d) {
 }
 
 async function copyContent(d) {
-  try { await navigator.clipboard.writeText(dataToText(d)); toast("Conteúdo copiado."); }
-  catch { toast("Não foi possível copiar."); }
+  toast(await copyToClipboard(dataToText(d)) ? "Conteúdo copiado." : "Não foi possível copiar.");
 }
 
 async function shareContent(d) {
   const text = dataToText(d);
   if (navigator.share) {
-    try { await navigator.share({ title: `Invictus.Med — ${d.nome}`, text }); } catch {}
-  } else {
-    try { await navigator.clipboard.writeText(text); toast("Copiado para compartilhar."); }
-    catch { toast("Compartilhamento indisponível."); }
+    try { await navigator.share({ title: `Invictus.Med — ${d.nome}`, text }); return; }
+    catch (e) {
+      if (e && e.name === "AbortError") return;   // o usuário só fechou o menu
+      /* sem suporte de fato → cai para a cópia */
+    }
   }
+  toast(await copyToClipboard(text) ? "Copiado para compartilhar." : "Compartilhamento indisponível.");
 }
 
 /* =================================================================
@@ -1245,26 +1393,27 @@ async function shareContent(d) {
 const HKEY = "invictus.history";
 const FKEY = "invictus.favorites";
 
+const mesmoNome = (a, b) => String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
+
 function addToHistory(nome) {
-  if (!nome) return;
-  let h = store.get(HKEY, []);
-  h = h.filter(x => x.nome.toLowerCase() !== nome.toLowerCase());
+  if (!nome || typeof nome !== "string" || !nome.trim()) return;
+  const h = readList(HKEY).filter(x => !mesmoNome(x.nome, nome));
   h.unshift({ nome, ts: Date.now() });
   store.set(HKEY, h.slice(0, 40));
 }
 
 function isFavorite(nome) {
   if (!nome) return false;
-  return store.get(FKEY, []).some(x => x.nome.toLowerCase() === nome.toLowerCase());
+  return readList(FKEY).some(x => mesmoNome(x.nome, nome));
 }
 
 function toggleFavorite(d) {
   const nome = d.nome;
   if (!nome) return;
-  let f = store.get(FKEY, []);
-  const exists = f.some(x => x.nome.toLowerCase() === nome.toLowerCase());
+  let f = readList(FKEY);
+  const exists = f.some(x => mesmoNome(x.nome, nome));
   if (exists) {
-    f = f.filter(x => x.nome.toLowerCase() !== nome.toLowerCase());
+    f = f.filter(x => !mesmoNome(x.nome, nome));
     toast("Removido dos favoritos.");
   } else {
     f.unshift({ nome, ts: Date.now() });
@@ -1276,11 +1425,43 @@ function toggleFavorite(d) {
   if (btn) {
     const nowFav = !exists;
     btn.classList.toggle("is-active", nowFav);
-    btn.querySelector("span").textContent = nowFav ? "Favoritado" : "Favoritar";
+    btn.setAttribute("aria-pressed", nowFav ? "true" : "false");
+    const label = btn.querySelector("span");
+    if (label) label.textContent = nowFav ? "Favoritado" : "Favoritar";
   }
 }
 
 /* Painel lateral */
+let drawerOpen = false;
+let drawerLastFocus = null;
+
+/* Mantém o Tab preso dentro do painel enquanto ele estiver aberto */
+function trapDrawerFocus(e) {
+  if (e.key !== "Tab" || !drawerOpen) return;
+  const foco = $$("button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])", els.drawer)
+    .filter(el => !el.disabled && el.offsetParent !== null);
+  if (!foco.length) return;
+  const first = foco[0], last = foco[foco.length - 1];
+  if (!els.drawer.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+  else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+}
+
+function revealDrawer() {
+  if (!drawerOpen) {
+    drawerLastFocus = document.activeElement;   // para devolver o foco ao fechar
+    document.addEventListener("keydown", trapDrawerFocus, true);
+  }
+  drawerOpen = true;
+  show(els.drawerScrim);
+  show(els.drawer);
+  requestAnimationFrame(() => {
+    els.drawer.classList.add("is-open");
+    $("#drawerClose")?.focus();
+  });
+  els.drawer.setAttribute("aria-hidden", "false");
+}
+
 function openDrawer(kind) {
   // Painel de PROJETOS (links externos com nome/máscara)
   if (kind === "projects") {
@@ -1299,16 +1480,13 @@ function openDrawer(kind) {
           </a>
         </li>`).join("");
     }
-    show(els.drawerScrim);
-    show(els.drawer);
-    requestAnimationFrame(() => els.drawer.classList.add("is-open"));
-    els.drawer.setAttribute("aria-hidden", "false");
+    revealDrawer();
     return;
   }
 
   const isFavMode = kind === "favorites";
   els.drawerTitle.textContent = isFavMode ? "Favoritos" : "Histórico";
-  const data = store.get(isFavMode ? FKEY : HKEY, []);
+  const data = readList(isFavMode ? FKEY : HKEY);
 
   els.drawerTools.innerHTML = data.length
     ? `<button class="drawer__clear" id="drawerClear" type="button">Limpar ${isFavMode ? "favoritos" : "histórico"}</button>` : "";
@@ -1341,7 +1519,7 @@ function openDrawer(kind) {
       e.stopPropagation();
       const key = isFavMode ? FKEY : HKEY;
       const name = b.dataset.del;
-      store.set(key, store.get(key, []).filter(x => x.nome !== name));
+      store.set(key, readList(key).filter(x => x.nome !== name));
       openDrawer(kind);
     });
   });
@@ -1350,20 +1528,24 @@ function openDrawer(kind) {
     store.set(isFavMode ? FKEY : HKEY, []); openDrawer(kind);
   });
 
-  show(els.drawerScrim);
-  show(els.drawer);
-  requestAnimationFrame(() => els.drawer.classList.add("is-open"));
-  els.drawer.setAttribute("aria-hidden", "false");
+  revealDrawer();
 }
 
 function closeDrawer() {
+  if (!drawerOpen) return;
+  drawerOpen = false;
+  document.removeEventListener("keydown", trapDrawerFocus, true);
   els.drawer.classList.remove("is-open");
   els.drawer.setAttribute("aria-hidden", "true");
   setTimeout(() => { hide(els.drawer); hide(els.drawerScrim); }, 320);
+  if (drawerLastFocus && typeof drawerLastFocus.focus === "function") drawerLastFocus.focus();
+  drawerLastFocus = null;
 }
 
 function timeAgo(ts) {
+  if (!Number.isFinite(ts)) return "";
   const s = Math.floor((Date.now() - ts) / 1000);
+  if (s < 0) return "agora";
   if (s < 60) return "agora";
   if (s < 3600) return `${Math.floor(s / 60)}min`;
   if (s < 86400) return `${Math.floor(s / 3600)}h`;
@@ -1374,6 +1556,7 @@ function timeAgo(ts) {
    11) BUSCA POR VOZ (Web Speech API)
    ================================================================= */
 function initVoice() {
+  if (!els.voice) return;
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) { els.voice.style.display = "none"; return; }
   const rec = new SR();
@@ -1396,16 +1579,34 @@ function initVoice() {
 /* =================================================================
    12) TEMA (claro/escuro) — nativo via prefers-color-scheme
    ================================================================= */
-function initTheme() {
-  const saved = store.get("invictus.theme", null);
-  const prefersLight = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
-  const theme = saved || (prefersLight ? "light" : "dark");
-  document.documentElement.setAttribute("data-theme", theme);
+const THEME_COLOR = { dark: "#0C1B16", light: "#F1F9F5" };
 
-  $("#btnTheme").addEventListener("click", () => {
+function applyTheme(theme) {
+  const t = theme === "light" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", t);
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", THEME_COLOR[t]);
+  const btn = $("#btnTheme");
+  if (btn) {
+    btn.setAttribute("aria-pressed", t === "light" ? "true" : "false");
+    btn.setAttribute("aria-label", t === "light" ? "Ativar tema escuro" : "Ativar tema claro");
+  }
+  return t;
+}
+
+function initTheme() {
+  // O tema já foi aplicado por um script curto no <head> (evita o "flash"
+  // de tela escura antes de o CSS trocar). Aqui só sincronizamos e ligamos o botão.
+  const atual = document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
+  applyTheme(atual);
+
+  $("#btnTheme")?.addEventListener("click", () => {
     const next = document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light";
-    document.documentElement.setAttribute("data-theme", next);
-    store.set("invictus.theme", next);
+    store.set("invictus.theme", applyTheme(next));
+  });
+
+  // Se o usuário nunca escolheu manualmente, acompanha a preferência do sistema
+  window.matchMedia?.("(prefers-color-scheme: light)").addEventListener?.("change", e => {
+    if (store.get("invictus.theme", null) === null) applyTheme(e.matches ? "light" : "dark");
   });
 }
 
@@ -1540,9 +1741,13 @@ function bindGlobalEvents() {
   $("#btnProjects").addEventListener("click", () => openDrawer("projects"));
   $("#btnHistory").addEventListener("click", () => openDrawer("history"));
   $("#btnFavorites").addEventListener("click", () => openDrawer("favorites"));
-  $("#drawerClose").addEventListener("click", closeDrawer);
-  els.drawerScrim.addEventListener("click", closeDrawer);
-  document.addEventListener("keydown", e => { if (e.key === "Escape") closeDrawer(); });
+  $("#drawerClose")?.addEventListener("click", closeDrawer);
+  els.drawerScrim?.addEventListener("click", closeDrawer);
+  document.addEventListener("keydown", e => {
+    if (e.key !== "Escape") return;
+    if (drawerOpen) { closeDrawer(); return; }
+    if (!els.suggestions.hidden) hideSuggestions();
+  });
 
   // Aba de estudo
   const studyBack = $("#studyBack");
@@ -1552,7 +1757,13 @@ function bindGlobalEvents() {
 
 function updateSuggHighlight(items) {
   items.forEach((li, i) => li.setAttribute("aria-selected", i === suggIndex ? "true" : "false"));
-  if (items[suggIndex]) items[suggIndex].scrollIntoView({ block: "nearest" });
+  const atual = items[suggIndex];
+  if (atual) {
+    atual.scrollIntoView({ block: "nearest" });
+    els.input.setAttribute("aria-activedescendant", atual.id);
+  } else {
+    els.input.removeAttribute("aria-activedescendant");
+  }
 }
 
 /* =================================================================

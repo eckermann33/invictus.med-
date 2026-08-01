@@ -5,16 +5,45 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#0C1B16" />
   <meta name="description" content="Invictus.Med — análise clínica estruturada de doenças, síndromes e condições médicas. Ferramenta de referência para estudantes e profissionais da saúde." />
+  <meta name="color-scheme" content="dark light" />
   <title>Invictus.Med — Referência Clínica Inteligente</title>
+
+  <!-- Ícone da aba: o mesmo glifo de pulso da marca, embutido (sem requisição extra) -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230A1A11'/%3E%3Cpolyline points='6,32 18,32 24,18 31,46 37,32 46,32 50,25 54,39 58,32' fill='none' stroke='%2334D399' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+
+  <!-- Compartilhamento em redes sociais -->
+  <meta property="og:type" content="website" />
+  <meta property="og:locale" content="pt_BR" />
+  <meta property="og:site_name" content="Invictus.Med" />
+  <meta property="og:title" content="Invictus.Med — Referência Clínica Inteligente" />
+  <meta property="og:description" content="Análise clínica estruturada de doenças, síndromes, condições médicas e fármacos — em segundos." />
+  <meta name="twitter:card" content="summary" />
+
+  <!-- Aplica o tema salvo ANTES da primeira pintura (evita o piscar de tela escura
+       para quem usa o tema claro). O script.js só sincroniza e liga o botão. -->
+  <script>
+    (function () {
+      try {
+        var salvo = JSON.parse(localStorage.getItem("invictus.theme"));
+        var tema = (salvo === "light" || salvo === "dark") ? salvo
+          : (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+        document.documentElement.setAttribute("data-theme", tema);
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute("content", tema === "light" ? "#F1F9F5" : "#0C1B16");
+      } catch (e) { /* localStorage bloqueado — segue com o tema escuro padrão */ }
+    })();
+  </script>
 
   <!-- Tipografia (fontes web; o site continua funcional com fontes do sistema caso não carreguem) -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet" />
 
-  <link rel="stylesheet" href="style.css?v=12" />
+  <link rel="stylesheet" href="style.css?v=13" />
 </head>
 <body>
+
+  <a class="skip-link" href="#searchInput">Pular para a busca</a>
 
   <!-- ===================== CABEÇALHO ===================== -->
   <header class="topbar">
@@ -78,6 +107,9 @@
               spellcheck="false"
               placeholder="Ex.: Hipertensão, Hepatite, Sertralina, Diabetes…"
               aria-label="Nome da doença, síndrome ou condição"
+              role="combobox"
+              aria-autocomplete="list"
+              aria-haspopup="listbox"
               aria-expanded="false"
               aria-controls="suggestions"
             />
@@ -207,7 +239,7 @@
 
   <!-- ===================== PAINEL LATERAL (Histórico / Favoritos) ===================== -->
   <div class="drawer-scrim" id="drawerScrim" hidden></div>
-  <aside class="drawer" id="drawer" hidden aria-hidden="true">
+  <aside class="drawer" id="drawer" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
     <div class="drawer__head">
       <h2 class="drawer__title" id="drawerTitle">Histórico</h2>
       <button class="icon-btn" id="drawerClose" type="button" aria-label="Fechar painel">
@@ -222,7 +254,10 @@
   <!-- Notificação flutuante (toast) -->
   <div class="toast" id="toast" hidden role="status"></div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="script.js?v=12"></script>
+  <!-- jsPDF é opcional: se não carregar, o botão "PDF" cai para a janela de impressão.
+       Sobre travar a versão com SRI (integrity), veja o README. -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"
+          crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
+  <script src="script.js?v=13" defer></script>
 </body>
 </html>

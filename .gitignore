@@ -1,0 +1,24 @@
+# Dependências e artefatos de build (caso o projeto ganhe um bundler no futuro)
+node_modules/
+dist/
+build/
+*.log
+
+# Segredos — NUNCA versione chaves de API
+.env
+.env.*
+!.env.example
+.dev.vars
+
+# Wrangler (Cloudflare Worker)
+.wrangler/
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editores
+.vscode/
+.idea/
+*.swp
