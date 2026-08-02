@@ -102,12 +102,33 @@ Para publicar o Worker, use `proxy-worker.example.js` como ponto de partida:
 ```bash
 npm create cloudflare@latest invictus-proxy
 # copie proxy-worker.example.js para src/index.js
-npx wrangler secret put GEMINI_API_KEY
+npx wrangler secret put LLM_KEY       # chave principal
+npx wrangler secret put LLM_KEY_2     # reserva (opcional)
+npx wrangler secret put ESTUDO_KEY    # aba de estudo (opcional)
 npx wrangler deploy
 ```
 
-Ajuste `ORIGENS_PERMITIDAS` no Worker para o domínio do seu site — sem isso,
-qualquer página pode chamar o seu endpoint e consumir a sua cota.
+O Worker fala o dialeto da API da OpenAI, então serve para qualquer provedor
+compatível (Groq, Cerebras, OpenAI…). Aponte `GATEWAY_URL` — variável comum,
+não secreta — para o endpoint do seu provedor, ou para um
+[AI Gateway](https://developers.cloudflare.com/ai-gateway/) se quiser cache e
+métricas.
+
+Como funciona a divisão de carga:
+
+| Modo | Provedor | Por quê |
+| --- | --- | --- |
+| Ficha | cascata `LLM_KEY` → `LLM_KEY_2` | se a primeira chave falhar, tenta a segunda sozinho |
+| Caso / ABNT | mesma chave da ficha | respostas curtas, não pesam na cota |
+| Quiz, flashcards, resumo, mapa | `ESTUDO_KEY` | cota isolada, para não competir com as fichas |
+
+Dois cuidados:
+
+- **`ALLOW_ORIGIN`**: deixar `"*"` permite que qualquer site chame o seu Worker
+  e gaste a sua cota. Restrinja ao domínio do seu site em produção.
+- **Não versione o ID da conta.** Se usar AI Gateway, a URL contém o seu
+  identificador de conta Cloudflare — mantenha-a em variável de ambiente, não
+  escrita no arquivo, já que este repositório é público.
 
 ### Modo direto — apenas para testes
 
@@ -128,13 +149,20 @@ seleciona a tarefa; sem ele, o padrão é a ficha clínica.
 | --- | --- |
 | `{ termo }` | Ficha clínica (esquema abaixo) |
 | `{ modo: "caso", termo }` | `{ titulo, apresentacao, queixa, antecedentes, exame_fisico, exames_complementares, conduta, pergunta_raciocinio }` |
-| `{ modo: "quiz", termo }` | `{ perguntas: [{ pergunta, alternativas[], correta, explicacao }] }` |
-| `{ modo: "flashcards", termo }` | `{ cards: [{ frente, verso }] }` |
-| `{ modo: "resumo", termo }` | `{ titulo, topicos: [{ titulo, conteudo }] }` |
-| `{ modo: "mapa", termo }` | `{ central, ramos: [{ titulo, subitens[] }] }` |
-| `{ modo: "abnt", termo, referencias[] }` | `{ abnt: ["referência formatada", ...] }` |
+| `{ modo: "quiz", termo }` | `{ perguntas: [{ pergunta, alternativas[], correta, explicacao }] }` — 3 perguntas, 4 alternativas |
+| `{ modo: "flashcards", termo }` | `{ cards: [{ frente, verso }] }` — 8 cards |
+| `{ modo: "resumo", termo }` | `{ titulo, topicos: [{ titulo, conteudo }] }` — 4 a 7 tópicos |
+| `{ modo: "mapa", termo }` | `{ central, ramos: [{ titulo, subitens[] }] }` — 4 a 6 ramos |
+| `{ modo: "abnt", termo, referencias[] }` | `{ abnt: ["referência formatada", ...] }` — 3 a 6 referências |
 
 Em `quiz`, o campo `correta` é o **índice** (base 0) da alternativa certa.
+
+A interface não depende dessas quantidades — ela renderiza o que vier. Elas
+estão aqui para o Worker e o front continuarem coerentes.
+
+O campo `tipo` (`"doenca"`, `"farmaco"` ou `"sintomas"`) decide o formato: com
+`"farmaco"` a interface troca todos os cards pelos de medicamento. O Worker
+devolve as duas estruturas sempre, com a que não se aplica em branco.
 
 **Ficha clínica** — dois formatos, escolhidos pela IA conforme o termo:
 

@@ -7,236 +7,289 @@
    Por que existe: com o proxy, a chave da IA fica no servidor e nunca
    aparece no código do site. O navegador só conversa com este Worker.
 
-   Como usar:
-     1. npm create cloudflare@latest invictus-proxy
-     2. copie este arquivo para src/index.js
-     3. npx wrangler secret put GEMINI_API_KEY
-     4. npx wrangler deploy
-     5. cole a URL publicada em CONFIG.PROXY_URL, no script.js
+   ARQUITETURA (espelha a que está em produção):
+     • FICHA  → cascata de provedores compatíveis com a API da OpenAI.
+                Se o primeiro falhar, tenta o próximo automaticamente.
+     • CASO e ABNT → mesmo provedor da ficha, com raciocínio um pouco maior.
+     • ABA DE ESTUDO (quiz, flashcards, resumo, mapa) → provedor separado,
+                com cota própria, para não competir com as fichas.
 
-   Este arquivo é um EXEMPLO — se você já tem um Worker no ar, ele
-   serve como documentação executável do contrato da API.
+   SEGREDOS (Cloudflare → Settings → Variables and Secrets → Secret):
+     • LLM_KEY      → chave principal
+     • LLM_KEY_2    → chave reserva (opcional)
+     • ESTUDO_KEY   → chave da aba de estudo (opcional)
+   VARIÁVEL (texto normal, não secreto):
+     • GATEWAY_URL  → endpoint compatível com OpenAI. Use o do seu
+                      provedor, ou o do Cloudflare AI Gateway se quiser
+                      cache e métricas. NÃO deixe o seu ID de conta
+                      escrito neste arquivo se o repositório for público.
+
+   Em qualquer falha devolve { erro, codigo } — o front mostra só uma
+   mensagem tranquila e o "codigo" em letras miúdas, para diagnóstico.
    ================================================================= */
 
-/* Domínios autorizados a chamar o Worker. Deixe "*" só em testes:
-   em produção, liste o seu site para evitar que terceiros gastem sua cota. */
-const ORIGENS_PERMITIDAS = [
-  "https://eckermann33.github.io",
-  "http://localhost:8000",
-  "http://127.0.0.1:8000",
-];
+/* Deixe "*" apenas em teste. Em produção, restrinja ao seu site: com "*"
+   qualquer página na internet pode chamar o Worker e gastar a sua cota. */
+const ALLOW_ORIGIN = "*";
 
-const MODELO = "gemini-2.5-flash";
-const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models";
+/* Endpoint padrão caso GATEWAY_URL não esteja definido no ambiente. */
+const FALLBACK_URL = "https://api.groq.com/openai/v1/chat/completions";
+
 const MAX_TERMO = 400;
 
-/* =================================================================
-   CORS
-   ================================================================= */
-function corsHeaders(origin) {
-  const permitido = ORIGENS_PERMITIDAS.includes(origin) ? origin : ORIGENS_PERMITIDAS[0];
-  return {
-    "access-control-allow-origin": permitido,
-    "access-control-allow-methods": "POST, OPTIONS",
-    "access-control-allow-headers": "content-type",
-    "access-control-max-age": "86400",
-    "vary": "Origin",
-  };
-}
+/* Provedores da FICHA, tentados de cima para baixo.
+   Use modelos DIFERENTES entre os níveis: se os dois forem o mesmo modelo,
+   uma indisponibilidade do modelo derruba a cascata inteira, e só uma
+   falha de cota por chave é realmente contornada. */
+const PROVIDERS = [
+  { sigla: "LLM1", keyEnv: "LLM_KEY",   model: "openai/gpt-oss-120b", extra: { reasoning_effort: "low" } },
+  { sigla: "LLM2", keyEnv: "LLM_KEY_2", model: "qwen/qwen3-32b",      extra: {} },
+];
 
-const json = (body, status, origin) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json; charset=utf-8", ...corsHeaders(origin) },
-  });
+/* Estudo de caso e ABNT — textos menores, raciocínio um pouco maior. */
+const CASE = { sigla: "CASO", keyEnv: "LLM_KEY", model: "openai/gpt-oss-120b", extra: { reasoning_effort: "medium" } };
 
-/* O front-end lê { erro, codigo } e mostra o código no cantinho da mensagem. */
-const erro = (codigo, mensagem, status, origin) =>
-  json({ erro: mensagem, codigo }, status, origin);
-
-/* =================================================================
-   PROMPTS — um por modo de uso
-   ================================================================= */
-const REGRA_JSON =
-  "Responda EXCLUSIVAMENTE com um objeto JSON válido, sem texto antes ou depois, " +
-  "sem markdown e sem crases. Todo o conteúdo em português do Brasil.";
-
-function promptFicha(termo) {
-  return `Você é um assistente médico de referência clínica para estudantes e profissionais da saúde.
-Analise o termo: "${termo}".
-
-${REGRA_JSON}
-
-Se for uma DOENÇA, SÍNDROME ou CONDIÇÃO, use este esquema:
-{
-  "nome": "", "cid10": "", "cid11": "", "sinonimos": [], "area_medica": "",
-  "definicao": "2 a 4 frases",
-  "sintomas_comuns": [], "sintomas_raros": [], "sinais_alerta": [],
-  "tratamento": { "padrao": [], "medicamentos": [], "complementares": [], "prognostico": "" },
-  "diagnostico": { "laboratoriais": [], "imagem": [], "criterios": [] },
-  "complicacoes": [],
-  "variacoes": [{ "nome": "", "definicao": "", "transmissao": "", "gravidade": "leve|moderada|grave", "tratamento": "" }],
-  "diferenciais": [],
-  "epidemiologia": { "prevalencia": "", "faixa_etaria": "", "sexo": "", "distribuicao_geografica": "" },
-  "fisiopatologia": { "simples": "para leigos", "avancada": "para estudantes de medicina" },
-  "referencias": []
-}
-
-Se for um FÁRMACO / MEDICAMENTO, use este outro esquema:
-{
-  "nome": "", "tipo": "farmaco", "area_medica": "", "sinonimos": [],
-  "farmaco": {
-    "principio_ativo": "", "classe": "", "para_que_serve": "2 a 4 frases",
-    "doencas_tratadas": [], "mecanismo_simples": "", "mecanismo_avancado": "",
-    "efeitos_adversos_comuns": [], "efeitos_adversos_graves": [],
-    "contraindicacoes": [], "interacoes": []
-  },
-  "referencias": []
-}
-
-REGRAS:
-- O termo pode descrever um CENÁRIO CLÍNICO com várias comorbidades. Nesse caso use "nome" como rótulo curto do quadro, faça um panorama integrado em "definicao" e preencha "variacoes" com uma entrada por condição.
-- Se o termo for AMPLO (ex.: "Hepatite", "Anemia"), preencha "variacoes" com os principais subtipos; caso contrário deixe [].
-- Listas sem dados pertinentes ficam vazias. Não invente códigos CID.
-- Máximo ~6 itens por lista. Nunca corte a resposta no meio.`;
-}
-
-function promptCaso(termo) {
-  return `Crie um caso clínico didático sobre "${termo}" para treinar raciocínio de estudantes de medicina.
-${REGRA_JSON}
-Esquema:
-{
-  "titulo": "", "apresentacao": "idade, sexo e contexto",
-  "queixa": "queixa principal e história da doença atual",
-  "antecedentes": "", "exame_fisico": "", "exames_complementares": "",
-  "conduta": "conduta esperada", "pergunta_raciocinio": "uma pergunta aberta para reflexão"
-}
-Use um paciente fictício. Todos os campos devem ser texto simples (não objetos aninhados).`;
-}
-
-function promptQuiz(termo) {
-  return `Crie 5 perguntas de múltipla escolha sobre "${termo}", nível estudante de medicina.
-${REGRA_JSON}
-Esquema:
-{ "perguntas": [ { "pergunta": "", "alternativas": ["A","B","C","D"], "correta": 0, "explicacao": "por que a correta é a correta" } ] }
-"correta" é o ÍNDICE (começando em 0) da alternativa certa. Sempre 4 alternativas plausíveis.`;
-}
-
-function promptFlashcards(termo) {
-  return `Crie 8 flashcards de estudo sobre "${termo}".
-${REGRA_JSON}
-Esquema: { "cards": [ { "frente": "pergunta curta", "verso": "resposta objetiva" } ] }
-A frente deve ser uma pergunta direta; o verso, uma resposta de 1 a 3 frases.`;
-}
-
-function promptResumo(termo) {
-  return `Escreva um resumo de estudo sobre "${termo}", organizado em tópicos.
-${REGRA_JSON}
-Esquema: { "titulo": "", "topicos": [ { "titulo": "", "conteudo": "1 a 3 frases" } ] }
-Entre 5 e 8 tópicos, cobrindo definição, fisiopatologia, quadro clínico, diagnóstico e tratamento.`;
-}
-
-function promptMapa(termo) {
-  return `Monte um mapa mental sobre "${termo}".
-${REGRA_JSON}
-Esquema: { "central": "tema central", "ramos": [ { "titulo": "", "subitens": ["", ""] } ] }
-Entre 4 e 6 ramos, cada um com 3 a 5 subitens curtos (poucas palavras).`;
-}
-
-function promptAbnt(termo, referencias) {
-  const lista = (referencias || []).filter(Boolean).join("; ") || "(nenhuma informada)";
-  return `Formate as referências abaixo no padrão ABNT (NBR 6023), sobre o tema "${termo}".
-Referências informadas: ${lista}
-${REGRA_JSON}
-Esquema: { "abnt": ["referência 1 formatada", "referência 2 formatada"] }
-Use apenas obras reais e reconhecidas. Não invente autores, editoras nem anos.`;
-}
-
-const PROMPTS = {
-  caso: promptCaso,
-  quiz: promptQuiz,
-  flashcards: promptFlashcards,
-  resumo: promptResumo,
-  mapa: promptMapa,
+/* Aba de estudo — provedor/chave separados para isolar a cota. */
+const ESTUDO = {
+  sigla: "ESTUDO",
+  keyEnv: "ESTUDO_KEY",
+  url: "https://api.cerebras.ai/v1/chat/completions",
+  model: "gpt-oss-120b",
+  extra: { reasoning_effort: "medium" },
 };
 
-/* =================================================================
-   CHAMADA À IA
-   ================================================================= */
-async function chamarGemini(prompt, apiKey) {
-  const res = await fetch(`${GEMINI_URL}/${MODELO}:generateContent?key=${encodeURIComponent(apiKey)}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: {
-        maxOutputTokens: 8192,
-        temperature: 0.3,
-        responseMimeType: "application/json",
-      },
-    }),
-  });
-
-  if (!res.ok) {
-    const detalhe = await res.text().catch(() => "");
-    const e = new Error(`Gemini ${res.status}: ${detalhe.slice(0, 200)}`);
-    e.status = res.status;
-    throw e;
-  }
-
-  const data = await res.json();
-  const texto = (data?.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("");
-  if (!texto) throw new Error("Resposta vazia da IA");
-  return texto;
-}
-
-/* Tolerante a crases e texto extra em volta do JSON */
-function extrairJSON(texto) {
-  let t = String(texto).trim().replace(/```json|```/gi, "").trim();
-  const ini = t.indexOf("{"), fim = t.lastIndexOf("}");
-  if (ini !== -1 && fim !== -1) t = t.slice(ini, fim + 1);
-  return JSON.parse(t);
-}
+/* A ficha é o maior JSON gerado: com poucos tokens ela é cortada no meio,
+   o JSON fica inválido e a resposta vira erro. Os outros modos são curtos. */
+const MAX_TOKENS = { ficha: 8192, padrao: 4096 };
 
 /* =================================================================
    HANDLER
    ================================================================= */
 export default {
   async fetch(request, env) {
-    const origin = request.headers.get("Origin") || "";
+    const cors = {
+      "Access-Control-Allow-Origin": ALLOW_ORIGIN,
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+      "Vary": "Origin",
+    };
 
-    if (request.method === "OPTIONS") {
-      return new Response(null, { status: 204, headers: corsHeaders(origin) });
-    }
-    if (request.method !== "POST") {
-      return erro("METODO", "Use POST.", 405, origin);
-    }
-    if (!env.GEMINI_API_KEY) {
-      return erro("SEM-CHAVE", "Chave da IA não configurada no Worker.", 500, origin);
-    }
-
-    let body;
-    try { body = await request.json(); }
-    catch { return erro("JSON", "Corpo da requisição inválido.", 400, origin); }
-
-    const termo = String(body?.termo || "").trim().slice(0, MAX_TERMO);
-    const modo = String(body?.modo || "ficha");
-    if (!termo) return erro("TERMO", "Informe um termo.", 400, origin);
-
-    let prompt;
-    if (modo === "ficha") prompt = promptFicha(termo);
-    else if (modo === "abnt") prompt = promptAbnt(termo, body?.referencias);
-    else if (PROMPTS[modo]) prompt = PROMPTS[modo](termo);
-    else return erro("MODO", "Modo desconhecido.", 400, origin);
+    if (request.method === "OPTIONS") return new Response(null, { headers: cors });
+    if (request.method !== "POST") return json({ erro: "Use POST.", codigo: "METODO" }, 405, cors);
 
     try {
-      const bruto = await chamarGemini(prompt, env.GEMINI_API_KEY);
-      return json(extrairJSON(bruto), 200, origin);
-    } catch (e) {
-      // 429 do provedor → o front mostra "muitas pesquisas no momento"
-      if (e.status === 429) return erro("LIMITE-429", "Limite de consultas atingido.", 429, origin);
-      if (e instanceof SyntaxError) return erro("PARSE", "A IA devolveu um formato inesperado.", 502, origin);
-      return erro("IA", "Falha ao consultar a IA.", 502, origin);
+      let body = {};
+      try { body = await request.json(); }
+      catch { return json({ erro: "Corpo inválido.", codigo: "BODY" }, 400, cors); }
+
+      const termo = String(body.termo || "").trim().slice(0, MAX_TERMO);
+      const modo = String(body.modo || "ficha").trim();
+      if (!termo) return json({ erro: "Termo vazio.", codigo: "VAZIO" }, 400, cors);
+
+      const url = env.GATEWAY_URL || FALLBACK_URL;
+
+      /* ---- Aba de estudo (provedor isolado) ---- */
+      const prompts = { quiz: promptQuiz, flashcards: promptFlash, resumo: promptResumo, mapa: promptMapa };
+      if (prompts[modo]) {
+        const key = env[ESTUDO.keyEnv];
+        if (!key) return json({ erro: "Sem chave de estudo.", codigo: "ESTUDO:sem-chave" }, 503, cors);
+        const r = await chamar(ESTUDO, ESTUDO.url, key, prompts[modo](termo), MAX_TOKENS.padrao);
+        if (r.ok) return json(r.dados, 200, cors);
+        return json({ erro: "Falha no estudo.", codigo: `${modo.toUpperCase()}:${r.codigo}` }, 503, cors);
+      }
+
+      /* ---- Estudo de caso e referências em ABNT ---- */
+      if (modo === "caso" || modo === "abnt") {
+        const key = env.LLM_KEY || env.LLM_KEY_2;
+        if (!key) return json({ erro: "Sem chave.", codigo: `${modo.toUpperCase()}:sem-chave` }, 503, cors);
+        const prompt = modo === "caso"
+          ? promptCaso(termo)
+          : promptAbnt(termo, Array.isArray(body.referencias) ? body.referencias : []);
+        const r = await chamar(CASE, url, key, prompt, MAX_TOKENS.padrao);
+        if (r.ok) return json(r.dados, 200, cors);
+        return json({ erro: "Falha ao gerar.", codigo: `${modo.toUpperCase()}:${r.codigo}` }, 503, cors);
+      }
+
+      /* ---- Ficha clínica (cascata) ---- */
+      if (modo !== "ficha") return json({ erro: "Modo desconhecido.", codigo: "MODO" }, 400, cors);
+
+      const prompt = promptFicha(termo);
+      let ultimoCodigo = "SEM-CHAVE";
+      for (const p of PROVIDERS) {
+        const key = env[p.keyEnv];
+        if (!key) { ultimoCodigo = `${p.sigla}:sem-chave`; continue; }
+        const r = await chamar(p, url, key, prompt, MAX_TOKENS.ficha);
+        if (r.ok) return json(r.dados, 200, cors);
+        ultimoCodigo = `${p.sigla}:${r.codigo}`;
+      }
+      return json({ erro: "Provedores indisponíveis.", codigo: ultimoCodigo }, 503, cors);
+    } catch {
+      return json({ erro: "Erro interno.", codigo: "INTERNO" }, 500, cors);
     }
   },
 };
+
+/* Chama um provedor no formato OpenAI. Devolve {ok, dados} ou {ok:false, codigo}. */
+async function chamar(p, url, key, prompt, maxTokens) {
+  let res;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json", "authorization": `Bearer ${key}` },
+      body: JSON.stringify({
+        model: p.model,
+        messages: [
+          { role: "system", content: "Você é um assistente médico. Responda SOMENTE com um objeto JSON válido, sem markdown." },
+          { role: "user", content: prompt },
+        ],
+        temperature: 0.3,
+        max_tokens: maxTokens,
+        response_format: { type: "json_object" },
+        ...p.extra,
+      }),
+    });
+  } catch { return { ok: false, codigo: "rede" }; }
+
+  const txt = await res.text();
+  if (!res.ok) return { ok: false, codigo: String(res.status) };
+
+  let bruto = "";
+  try { bruto = JSON.parse(txt)?.choices?.[0]?.message?.content || ""; }
+  catch { return { ok: false, codigo: "resp" }; }
+
+  const dados = extrairJSON(bruto);
+  if (!dados) return { ok: false, codigo: "json" };
+  return { ok: true, dados };
+}
+
+function json(obj, status, cors) {
+  return new Response(JSON.stringify(obj), {
+    status,
+    headers: { "content-type": "application/json; charset=utf-8", ...cors },
+  });
+}
+
+/* Tolerante a crases e texto extra em volta do JSON */
+function extrairJSON(text) {
+  let t = String(text).trim().replace(/```json|```/gi, "").trim();
+  const a = t.indexOf("{"), b = t.lastIndexOf("}");
+  if (a !== -1 && b !== -1) t = t.slice(a, b + 1);
+  try { return JSON.parse(t); } catch { return null; }
+}
+
+/* =================================================================
+   PROMPTS — as quantidades aqui precisam bater com o que o front espera
+   ================================================================= */
+const REGRA_JSON =
+  "Responda EXCLUSIVAMENTE com um objeto JSON válido, sem texto antes ou depois, " +
+  "sem markdown e sem crases. Tudo em português do Brasil. Cada campo é TEXTO " +
+  "simples (string) — nunca objeto ou lista aninhada.";
+
+function promptQuiz(termo) {
+  return `Crie um QUIZ de múltipla escolha para estudantes de medicina sobre: "${termo}".
+Gere EXATAMENTE 3 perguntas.
+${REGRA_JSON}
+Formato: { "perguntas": [ { "pergunta": "", "alternativas": ["A","B","C","D"], "correta": 0, "explicacao": "" } ] }
+Regras:
+- EXATAMENTE 4 alternativas por pergunta.
+- "correta" é o ÍNDICE (0 a 3) da alternativa certa em "alternativas".
+- Varie a posição da correta entre as perguntas.
+- Dificuldade média, sem ambiguidade.`;
+}
+
+function promptFlash(termo) {
+  return `Crie 8 FLASHCARDS de estudo para estudantes de medicina sobre: "${termo}".
+${REGRA_JSON}
+Formato: { "cards": [ { "frente": "pergunta ou conceito curto", "verso": "resposta objetiva" } ] }
+Regras: EXATAMENTE 8 cards; "verso" com 1 a 3 frases; cobertura variada do tema.`;
+}
+
+function promptResumo(termo) {
+  return `Crie um RESUMO DE ESTUDO estruturado para estudantes de medicina sobre: "${termo}".
+${REGRA_JSON}
+Formato: { "titulo": "", "topicos": [ { "titulo": "", "conteudo": "" } ] }
+Regras: entre 4 e 7 tópicos, cobrindo os pontos mais importantes; "conteudo" objetivo e didático.`;
+}
+
+function promptMapa(termo) {
+  return `Crie um MAPA MENTAL para estudantes de medicina sobre: "${termo}".
+${REGRA_JSON}
+Formato: { "central": "", "ramos": [ { "titulo": "", "subitens": ["", ""] } ] }
+Regras: entre 4 e 6 ramos (ex.: Definição, Etiologia, Sintomas, Diagnóstico, Tratamento, Complicações),
+cada um com 2 a 5 subitens curtos.`;
+}
+
+function promptCaso(termo) {
+  return `Crie um ESTUDO DE CASO CLÍNICO didático para um estudante de medicina sobre: "${termo}".
+${REGRA_JSON}
+Formato:
+{
+  "titulo": "título curto do caso",
+  "apresentacao": "idade, sexo e contexto de chegada",
+  "queixa": "queixa principal e história da doença atual",
+  "antecedentes": "antecedentes pessoais/familiares relevantes",
+  "exame_fisico": "principais achados",
+  "exames_complementares": "resultados laboratoriais/imagem pertinentes",
+  "conduta": "conduta e manejo esperados",
+  "pergunta_raciocinio": "pergunta de raciocínio clínico (NÃO dê a resposta)"
+}
+Paciente fictício, realista e coerente com o tema. Escreva em frases corridas.`;
+}
+
+function promptAbnt(termo, refs) {
+  const lista = refs.length ? refs.join(" | ") : "(não fornecidas — use fontes reais e reconhecidas sobre o tema)";
+  return `Formate referências no padrão ABNT (NBR 6023) sobre o tema "${termo}".
+Referências usadas como base: ${lista}.
+${REGRA_JSON}
+Formato: { "abnt": ["referência completa em ABNT", "..."] }
+Regras:
+- Cada item completo (autor, título, edição, local, editora ou periódico, ano).
+- Se faltar um dado, complete com a melhor informação real conhecida; NÃO invente autores ou obras.
+- Ordene alfabeticamente. Entre 3 e 6 referências, priorizando diretrizes e livros-texto.`;
+}
+
+function promptFicha(termo) {
+  return `Você é um assistente médico de referência clínica para estudantes e profissionais da saúde.
+Analise o termo: "${termo}".
+
+Responda EXCLUSIVAMENTE com um objeto JSON válido (sem markdown, sem crases), em português do Brasil,
+seguindo EXATAMENTE este esquema:
+
+{
+  "tipo": "doenca | farmaco | sintomas",
+  "nome": "nome correto e completo da condição OU do fármaco",
+  "cid10": "", "cid11": "",
+  "sinonimos": [], "area_medica": "",
+  "definicao": "2 a 4 frases",
+  "sintomas_comuns": [], "sintomas_raros": [], "sinais_alerta": [],
+  "tratamento": { "padrao": [], "medicamentos": [], "complementares": [], "prognostico": "" },
+  "diagnostico": { "laboratoriais": [], "imagem": [], "criterios": [] },
+  "complicacoes": [],
+  "variacoes": [ { "nome": "", "definicao": "", "transmissao": "(só se infecciosa, senão '')", "gravidade": "leve|moderada|grave", "tratamento": "" } ],
+  "diferenciais": [],
+  "epidemiologia": { "prevalencia": "", "faixa_etaria": "", "sexo": "", "distribuicao_geografica": "" },
+  "fisiopatologia": { "simples": "para leigos", "avancada": "para estudantes de medicina" },
+  "farmaco": {
+    "principio_ativo": "", "classe": "", "para_que_serve": "1 a 2 frases",
+    "doencas_tratadas": [], "mecanismo_simples": "",
+    "mecanismo_avancado": "receptores e vias envolvidos",
+    "efeitos_adversos_comuns": [], "efeitos_adversos_graves": [],
+    "contraindicacoes": [], "interacoes": []
+  },
+  "referencias": []
+}
+
+REGRAS IMPORTANTES:
+- Defina "tipo": use "farmaco" para MEDICAMENTO/princípio ativo (ex.: "sertralina", "losartana");
+  "sintomas" para sintomas soltos; senão "doenca".
+- Se "tipo" = "farmaco": preencha APENAS "tipo", "nome", "sinonimos", "area_medica", "farmaco" e
+  "referencias". Deixe os campos de doença vazios ([] ou "").
+- Se "tipo" = "doenca" ou "sintomas": preencha os campos de doença e deixe "farmaco" com campos vazios.
+- O termo pode descrever um CENÁRIO CLÍNICO com várias comorbidades (ex.: "hipertensão, diabetes tipo 2
+  e obesidade"). Nesse caso: "nome" = rótulo curto do quadro; "definicao" = panorama integrado;
+  "variacoes" = uma entrada por condição; "tratamento" = manejo integrado; "complicacoes" = riscos combinados.
+- Se o termo for AMPLO (ex.: "Hepatite", "Anemia"), preencha "variacoes" com os principais subtipos;
+  caso contrário deixe [].
+- Listas sem dados pertinentes ficam vazias. Não invente códigos CID.
+- Seja CONCISO: no máximo ~6 itens por lista. Nunca corte a resposta no meio.`;
+}

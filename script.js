@@ -370,9 +370,16 @@ function isFichaValida(d) {
   if (!d || typeof d !== "object" || Array.isArray(d)) return false;
   const texto = v => typeof v === "string" && v.trim();
   const lista = v => Array.isArray(v) && v.length > 0;
+  const temConteudo = v => texto(v) || lista(v);
+
+  // O proxy devolve a chave "farmaco" mesmo em fichas de doença (com os campos
+  // vazios). Verificar só a existência do objeto aceitaria uma ficha em branco.
+  const farmacoPreenchido = d.farmaco && typeof d.farmaco === "object" &&
+    Object.values(d.farmaco).some(temConteudo);
+
   return Boolean(
-    texto(d.nome) || texto(d.definicao) || lista(d.sintomas_comuns) ||
-    lista(d.variacoes) || (d.farmaco && typeof d.farmaco === "object")
+    texto(d.definicao) || lista(d.sintomas_comuns) || lista(d.variacoes) ||
+    farmacoPreenchido || (texto(d.nome) && (lista(d.diferenciais) || lista(d.complicacoes)))
   );
 }
 
