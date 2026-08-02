@@ -203,6 +203,18 @@ devolve as duas estruturas sempre, com a que não se aplica em branco.
 ```
 </details>
 
+**Orçamento de tempo.** O front cancela a requisição em **45s**
+(`CONFIG.TIMEOUT_MS`). Todo o trabalho do proxy — incluindo tentativas de
+fallback — precisa caber nessa janela, senão o usuário vê `cód. TIMEOUT`
+enquanto o servidor ainda está processando. Com uma cascata de dois níveis,
+use um limite por tentativa (`AbortSignal.timeout`) de no máximo ~20s.
+
+**Conteúdo vazio conta como falha.** O front valida a ficha antes de
+renderizar (`isFichaValida`): um JSON bem formado mas sem conteúdo vira
+`cód. FICHA`. Se o proxy tiver fallback, vale aplicar a mesma checagem antes
+de responder 200 — assim uma resposta vazia aciona o próximo provedor em vez
+de virar erro para o usuário.
+
 **Erros.** Qualquer resposta fora da faixa 2xx deve trazer
 `{ erro: "mensagem", codigo: "CODIGO-CURTO" }`. O front-end nunca mostra a
 mensagem técnica ao usuário — apenas um texto tranquilizador e o `codigo` em
