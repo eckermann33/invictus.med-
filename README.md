@@ -1,175 +1,156 @@
-# Invictus.Med — Referência Clínica Inteligente
+# Invictus.Med
 
-Ferramenta web de consulta clínica: você digita uma doença, síndrome, condição,
-cenário com comorbidades ou um fármaco, e recebe uma **ficha estruturada** —
-definição, sintomas, sinais de alerta, diagnóstico, tratamento, epidemiologia,
-fisiopatologia e diagnósticos diferenciais.
+<https://eckermann33.github.io/invictus.med-/>
 
-Inclui ainda ferramentas de estudo geradas sob demanda: quiz, flashcards, resumo,
-mapa mental, estudo de caso e referências formatadas em ABNT.
+Você digita "hepatite", "sertralina" ou "paciente com hipertensão, diabetes tipo 2
+e obesidade" — e recebe uma ficha clínica montada na hora, organizada em seções.
 
-> ⚠️ **Aviso médico** — o conteúdo é educacional e gerado por inteligência
-> artificial. Não substitui consulta, diagnóstico ou tratamento por profissional
-> de saúde qualificado. Verifique sempre as fontes primárias antes de qualquer
-> decisão clínica.
+A ideia veio de um incômodo simples: procurar uma condição na internet costuma
+devolver ou um texto raso demais, ou vinte abas abertas para juntar as peças. Eu
+queria uma tela só, com o que interessa na hora de estudar, e no idioma certo.
 
----
+É um site, não um app. Abre no navegador, funciona no celular, não precisa de
+cadastro. Está em beta e é gratuito.
 
-## Índice
+## O que vem numa ficha
 
-- [Stack e princípios](#stack-e-princípios)
-- [Estrutura do projeto](#estrutura-do-projeto)
-- [Rodando localmente](#rodando-localmente)
-- [Configuração da IA](#configuração-da-ia)
-- [Contrato da API do proxy](#contrato-da-api-do-proxy)
-- [Privacidade](#privacidade)
-- [Acessibilidade](#acessibilidade)
-- [Convenções de código](#convenções-de-código)
-- [Roadmap](#roadmap)
+Definição, sintomas comuns e incomuns, exames laboratoriais e de imagem,
+critérios diagnósticos, tratamento padrão e medicamentoso, prognóstico,
+complicações, epidemiologia e diagnósticos diferenciais. Os códigos CID-10 e
+CID-11 aparecem no cabeçalho quando existem.
 
----
+Duas partes que eu gosto especialmente:
 
-## Stack e princípios
+**Sinais de alerta** ficam num bloco destacado, separado do resto. São os
+sintomas que pedem avaliação urgente, e eles se perdem quando ficam no meio de
+uma lista comprida.
 
-- **HTML + CSS + JavaScript puro.** Sem framework, sem bundler, sem passo de build.
-  O site é servido como arquivos estáticos (GitHub Pages).
-- **Uma única dependência externa:** [jsPDF](https://github.com/parallax/jsPDF),
-  usada só na exportação em PDF — e opcional: se não carregar, o botão "PDF" cai
-  automaticamente para a janela de impressão.
-- **A chave da IA nunca vai para o navegador** no modo recomendado (proxy).
-- **Degradação graciosa:** sem IA configurada, os exemplos de demonstração
-  (`Hipertensão`, `Diabetes`) continuam funcionando offline.
+**Fisiopatologia em duas versões** — uma explicação simples e uma detalhada, em
+abas. Dá para começar pela simples e trocar quando quiser o mecanismo de verdade.
 
-## Estrutura do projeto
+Se o termo for amplo (hepatite, anemia, diabetes), a ficha ganha uma seção de
+variações com os subtipos. Se for um medicamento, ela troca de formato: princípio
+ativo, classe, mecanismo de ação, efeitos adversos, contraindicações e interações.
+E os diferenciais são clicáveis — um clique já abre a ficha da outra condição.
 
-| Arquivo | O que faz |
+## A aba de estudar
+
+De dentro de qualquer ficha dá para abrir a aba de estudo, que gera quatro coisas
+sob demanda: **quiz** de múltipla escolha com correção e explicação, **flashcards**
+para revisão, **resumo** em tópicos e **mapa mental**. Cada uma só é gerada quando
+você clica — nada fica pesando enquanto você não pede.
+
+Tem também um **estudo de caso**: um paciente fictício com história, exame físico,
+exames e uma pergunta de raciocínio no fim, sem a resposta. Bom para testar se
+você realmente entendeu a condição, e não só decorou a lista.
+
+## Os detalhes pequenos
+
+Histórico e favoritos ficam salvos no seu navegador. Busca por voz, se o navegador
+suportar. Tema claro e escuro, que segue a preferência do sistema até você escolher
+uma. Exportação em PDF e uma versão limpa para impressão. E um botão que copia as
+referências já formatadas em ABNT, para colar direto no trabalho.
+
+No rodapé tem um "Aprovado por Dr. House". Passe o mouse em cima.
+
+## Sobre o conteúdo
+
+As fichas são geradas por IA no momento da busca. É isso que permite pesquisar
+praticamente qualquer coisa sem precisar de um banco de dados gigante — e é
+também o motivo de o conteúdo poder sair errado.
+
+Então vale ser direto: isto é material de estudo. Não serve para decidir conduta
+e não substitui consulta, diagnóstico ou tratamento de um profissional. As
+referências que a ficha cita estão ali justamente para você conferir antes de
+levar qualquer coisa para a prática.
+
+Sobre privacidade: o site manda para a IA só o termo que você digitou, nada mais.
+Histórico, favoritos e tema ficam no `localStorage` do seu navegador e não saem
+dele. Ainda assim, não digite dados de paciente na busca.
+
+Achou um erro ou tem sugestão? [me chama](https://www.instagram.com/_eckermann).
+
+## Por dentro
+
+HTML, CSS e JavaScript puro. Sem framework, sem build, sem `node_modules` — são
+três arquivos servidos como estáticos no GitHub Pages. A única dependência
+externa é o [jsPDF](https://github.com/parallax/jsPDF), e mesmo ela é opcional:
+se não carregar, o botão de PDF cai sozinho para a janela de impressão.
+
+| Arquivo | |
 | --- | --- |
-| `index.html` | Marcação, metadados e o script curto que aplica o tema antes da primeira pintura. |
-| `style.css` | Design system completo: tokens de cor, tema claro/escuro, responsivo, impressão. |
-| `script.js` | Toda a lógica: busca, chamadas à IA, renderização da ficha, histórico, favoritos, voz, exportação. |
-| `proxy-worker.example.js` | Implementação de referência do Cloudflare Worker que esconde a chave da IA. |
+| `index.html` | marcação, metadados e o script curto que aplica o tema antes da primeira pintura |
+| `style.css` | tokens de cor, tema claro/escuro, responsivo e estilos de impressão |
+| `script.js` | busca, chamadas à IA, renderização, histórico, favoritos, voz e exportação |
+| `proxy-worker.example.js` | o Cloudflare Worker que guarda a chave da IA |
 
-Mapa das seções de `script.js` (elas estão numeradas no próprio arquivo):
+A chave da IA nunca chega ao navegador. Quem fala com o modelo é um Cloudflare
+Worker, e o site só conversa com ele. O Worker tenta os provedores em cascata:
+se o primeiro falhar — cota estourada, modelo fora do ar, resposta vazia — ele
+passa para o próximo sozinho. A aba de estudo usa uma chave separada, para não
+disputar cota com as fichas.
 
-```
-1) Configuração da IA          8)  Renderização da ficha
-2) Prompt estruturado          9)  Copiar / compartilhar / PDF
-3) Atalhos de DOM              10) Histórico e favoritos
-4) Utilitários                 11) Busca por voz
-5) Sugestões automáticas       12) Tema claro/escuro
-6) Chamada à IA                13) Demonstração offline
-7) Fluxo de busca              14) Eventos globais · 15) Inicialização
-```
+E se não houver IA configurada, buscar por "hipertensão" ou "diabetes" ainda
+funciona: essas duas fichas estão embutidas no código como demonstração.
 
-## Rodando localmente
+## Mexendo no código
 
-Não abra o `index.html` com duplo clique (`file://`): a API de área de
-transferência e o reconhecimento de voz exigem um contexto seguro. Suba um
-servidor local:
+Não abra o `index.html` com duplo clique — a área de transferência e o
+reconhecimento de voz exigem contexto seguro. Suba um servidor:
 
 ```bash
-# Python (já vem instalado na maioria dos sistemas)
-python3 -m http.server 8000
-
-# ou Node
-npx serve .
+python3 -m http.server 8000   # ou: npx serve .
 ```
 
-Depois acesse <http://localhost:8000>.
+A configuração fica toda no objeto `CONFIG`, no topo do `script.js`. O normal é
+`PROVIDER: "proxy"` com a URL do seu Worker em `PROXY_URL`. Existem também os
+modos diretos (`gemini`, `openai`, `anthropic`), mas neles a chave fica visível
+no código-fonte do site — servem para teste local, nunca para publicar.
 
-Sem chave de IA configurada, busque por **Hipertensão** ou **Diabetes** para ver
-as fichas de demonstração que vêm embutidas no código.
+Para subir o seu próprio Worker, `proxy-worker.example.js` é o ponto de partida:
+copie para `src/index.js` num projeto Cloudflare, cadastre as chaves como
+secrets e faça o deploy. Dois cuidados que economizam dor de cabeça: restrinja
+`ALLOW_ORIGIN` ao seu domínio (com `"*"`, qualquer site na internet chama o seu
+Worker e gasta a sua cota), e se usar AI Gateway não deixe a URL escrita no
+arquivo — ela contém o ID da sua conta, e este repositório é público.
 
-## Configuração da IA
+Se for mexer, três coisas que não convém quebrar:
 
-Tudo é controlado pelo objeto `CONFIG`, no topo do `script.js`.
+- Todo texto vindo da IA passa por `escapeHTML()` antes de virar `innerHTML`.
+  Resposta de modelo é conteúdo não confiável, sem exceção.
+- Toda chamada de rede vai por `fetchWithTimeout` / `postProxy`, que já cuidam de
+  prazo, cancelamento e código de erro.
+- Ao editar `style.css` ou `script.js`, incremente o `?v=` no `index.html`, senão
+  os navegadores continuam servindo a versão velha.
 
-### Modo `proxy` — recomendado
-
-A chave fica num Cloudflare Worker (o plano gratuito atende bem) e o navegador
-nunca a enxerga.
-
-```js
-const CONFIG = {
-  PROVIDER: "proxy",
-  PROXY_URL: "https://SEU-WORKER.workers.dev/",
-  // ...
-};
-```
-
-Para publicar o Worker, use `proxy-worker.example.js` como ponto de partida:
-
-```bash
-npm create cloudflare@latest invictus-proxy
-# copie proxy-worker.example.js para src/index.js
-npx wrangler secret put LLM_KEY       # chave principal
-npx wrangler secret put LLM_KEY_2     # reserva (opcional)
-npx wrangler secret put ESTUDO_KEY    # aba de estudo (opcional)
-npx wrangler deploy
-```
-
-O Worker fala o dialeto da API da OpenAI, então serve para qualquer provedor
-compatível (Groq, Cerebras, OpenAI…). Aponte `GATEWAY_URL` — variável comum,
-não secreta — para o endpoint do seu provedor, ou para um
-[AI Gateway](https://developers.cloudflare.com/ai-gateway/) se quiser cache e
-métricas.
-
-Como funciona a divisão de carga:
-
-| Modo | Provedor | Por quê |
-| --- | --- | --- |
-| Ficha | cascata `LLM_KEY` → `LLM_KEY_2` | se a primeira chave falhar, tenta a segunda sozinho |
-| Caso / ABNT | mesma chave da ficha | respostas curtas, não pesam na cota |
-| Quiz, flashcards, resumo, mapa | `ESTUDO_KEY` | cota isolada, para não competir com as fichas |
-
-Dois cuidados:
-
-- **`ALLOW_ORIGIN`**: deixar `"*"` permite que qualquer site chame o seu Worker
-  e gaste a sua cota. Restrinja ao domínio do seu site em produção.
-- **Não versione o ID da conta.** Se usar AI Gateway, a URL contém o seu
-  identificador de conta Cloudflare — mantenha-a em variável de ambiente, não
-  escrita no arquivo, já que este repositório é público.
-
-### Modo direto — apenas para testes
-
-```js
-const API_KEY = "sua-chave";
-const CONFIG = { PROVIDER: "gemini" /* ou "openai" | "anthropic" */ };
-```
-
-> 🔴 Neste modo a chave fica **visível** no código-fonte do site. Nunca publique
-> assim: qualquer visitante consegue lê-la e usá-la.
-
-## Contrato da API do proxy
-
-O front-end faz `POST` com corpo JSON para `CONFIG.PROXY_URL`. O campo `modo`
-seleciona a tarefa; sem ele, o padrão é a ficha clínica.
-
-| Requisição | Resposta esperada |
-| --- | --- |
-| `{ termo }` | Ficha clínica (esquema abaixo) |
-| `{ modo: "caso", termo }` | `{ titulo, apresentacao, queixa, antecedentes, exame_fisico, exames_complementares, conduta, pergunta_raciocinio }` |
-| `{ modo: "quiz", termo }` | `{ perguntas: [{ pergunta, alternativas[], correta, explicacao }] }` — 3 perguntas, 4 alternativas |
-| `{ modo: "flashcards", termo }` | `{ cards: [{ frente, verso }] }` — 8 cards |
-| `{ modo: "resumo", termo }` | `{ titulo, topicos: [{ titulo, conteudo }] }` — 4 a 7 tópicos |
-| `{ modo: "mapa", termo }` | `{ central, ramos: [{ titulo, subitens[] }] }` — 4 a 6 ramos |
-| `{ modo: "abnt", termo, referencias[] }` | `{ abnt: ["referência formatada", ...] }` — 3 a 6 referências |
-
-Em `quiz`, o campo `correta` é o **índice** (base 0) da alternativa certa.
-
-A interface não depende dessas quantidades — ela renderiza o que vier. Elas
-estão aqui para o Worker e o front continuarem coerentes.
-
-O campo `tipo` (`"doenca"`, `"farmaco"` ou `"sintomas"`) decide o formato: com
-`"farmaco"` a interface troca todos os cards pelos de medicamento. O Worker
-devolve as duas estruturas sempre, com a que não se aplica em branco.
-
-**Ficha clínica** — dois formatos, escolhidos pela IA conforme o termo:
+A acessibilidade também é para manter: link de pular para a busca, campo como
+`combobox` com navegação por setas, painel lateral como diálogo modal com foco
+preso e devolvido, foco visível em tudo, e respeito a `prefers-reduced-motion`.
 
 <details>
-<summary>Doença, síndrome ou condição</summary>
+<summary><b>Contrato da API do proxy</b> — o que o site envia e espera de volta</summary>
+
+O site faz `POST` com corpo JSON para `CONFIG.PROXY_URL`. O campo `modo` escolhe
+a tarefa; sem ele, o padrão é a ficha.
+
+| Requisição | Resposta |
+| --- | --- |
+| `{ termo }` | ficha clínica (esquema abaixo) |
+| `{ modo: "caso", termo }` | `{ titulo, apresentacao, queixa, antecedentes, exame_fisico, exames_complementares, conduta, pergunta_raciocinio }` |
+| `{ modo: "quiz", termo }` | `{ perguntas: [{ pergunta, alternativas[], correta, explicacao }] }` |
+| `{ modo: "flashcards", termo }` | `{ cards: [{ frente, verso }] }` |
+| `{ modo: "resumo", termo }` | `{ titulo, topicos: [{ titulo, conteudo }] }` |
+| `{ modo: "mapa", termo }` | `{ central, ramos: [{ titulo, subitens[] }] }` |
+| `{ modo: "abnt", termo, referencias[] }` | `{ abnt: ["referência formatada", ...] }` |
+
+Em `quiz`, `correta` é o **índice numérico** da alternativa certa (base 0) — se
+vier como letra, nada é marcado como correto.
+
+O campo `tipo` decide o formato da ficha: `"farmaco"` troca todos os cards pelos
+de medicamento; `"doenca"` e `"sintomas"` usam o formato clínico.
 
 ```jsonc
+// doença, síndrome ou condição
 {
   "nome": "", "cid10": "", "cid11": "", "sinonimos": [], "area_medica": "",
   "definicao": "",
@@ -183,13 +164,8 @@ devolve as duas estruturas sempre, com a que não se aplica em branco.
   "fisiopatologia": { "simples": "", "avancada": "" },
   "referencias": []
 }
-```
-</details>
 
-<details>
-<summary>Fármaco (medicamento)</summary>
-
-```jsonc
+// fármaco
 {
   "nome": "", "tipo": "farmaco", "area_medica": "", "sinonimos": [],
   "farmaco": {
@@ -201,30 +177,30 @@ devolve as duas estruturas sempre, com a que não se aplica em branco.
   "referencias": []
 }
 ```
+
+Duas restrições que o proxy precisa respeitar:
+
+**Tempo.** O site cancela em 45s (`CONFIG.TIMEOUT_MS`). Todo o trabalho do
+proxy, incluindo as tentativas de fallback, tem que caber nessa janela — senão
+o usuário vê `cód. TIMEOUT` com o servidor ainda processando. Numa cascata,
+use um limite por tentativa de ~18s.
+
+**Resposta vazia é falha.** O site valida a ficha antes de renderizar
+(`isFichaValida`): JSON bem formado mas sem conteúdo vira `cód. FICHA`. Se o
+proxy tem fallback, vale checar o mesmo antes de responder 200 — assim uma
+resposta oca aciona o próximo provedor em vez de virar erro na tela.
+
+**Erros** devem vir como `{ erro, codigo }` fora da faixa 2xx. O site nunca
+mostra a mensagem técnica: só um texto tranquilo e o `codigo` em letras miúdas.
+Os códigos gerados pelo próprio site são `TIMEOUT`, `REDE`, `FICHA`, `NO_PROXY`
+e `CANCELLED`.
+
 </details>
 
-**Orçamento de tempo.** O front cancela a requisição em **45s**
-(`CONFIG.TIMEOUT_MS`). Todo o trabalho do proxy — incluindo tentativas de
-fallback — precisa caber nessa janela, senão o usuário vê `cód. TIMEOUT`
-enquanto o servidor ainda está processando. Com uma cascata de dois níveis,
-use um limite por tentativa (`AbortSignal.timeout`) de no máximo ~20s.
+<details>
+<summary><b>Travando a versão do jsPDF</b></summary>
 
-**Conteúdo vazio conta como falha.** O front valida a ficha antes de
-renderizar (`isFichaValida`): um JSON bem formado mas sem conteúdo vira
-`cód. FICHA`. Se o proxy tiver fallback, vale aplicar a mesma checagem antes
-de responder 200 — assim uma resposta vazia aciona o próximo provedor em vez
-de virar erro para o usuário.
-
-**Erros.** Qualquer resposta fora da faixa 2xx deve trazer
-`{ erro: "mensagem", codigo: "CODIGO-CURTO" }`. O front-end nunca mostra a
-mensagem técnica ao usuário — apenas um texto tranquilizador e o `codigo` em
-letras miúdas, para diagnóstico. Códigos gerados pelo próprio front:
-`TIMEOUT`, `REDE`, `FICHA` (resposta fora do formato), `NO_PROXY` e `CANCELLED`.
-
-### Travando a versão do jsPDF (SRI)
-
-O `index.html` carrega o jsPDF por CDN sem `integrity`. Para travar a versão,
-calcule o hash a partir do arquivo publicado e adicione o atributo:
+O `index.html` carrega o jsPDF por CDN sem `integrity`. Para travar a versão:
 
 ```bash
 curl -s https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js \
@@ -237,47 +213,17 @@ curl -s https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js \
         crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
 ```
 
-Se o hash não bater, o navegador bloqueia o script e o botão "PDF" passa a usar
-a janela de impressão — o site continua funcionando.
+Se o hash não bater o navegador bloqueia o script, e o botão de PDF passa a usar
+a janela de impressão. O site continua funcionando.
 
-## Privacidade
+</details>
 
-- O site envia à IA **apenas o termo digitado**. Nunca digite dados de pacientes.
-- Histórico, favoritos e preferência de tema ficam no `localStorage` do próprio
-  navegador. Nada é enviado a servidores nossos.
-- Chaves em `.env` e `.dev.vars` estão no `.gitignore` — não versione segredos.
+## O que ainda falta
 
-## Acessibilidade
-
-O que já está implementado e deve ser preservado em mudanças futuras:
-
-- Link "pular para a busca" no primeiro Tab.
-- Campo de busca como `combobox` com `aria-activedescendant`, navegação por setas
-  e `Esc` para fechar as sugestões.
-- Painel lateral como `dialog` modal, com foco preso dentro dele e devolvido ao
-  botão de origem ao fechar.
-- Foco visível (`:focus-visible`) em todos os controles.
-- Respeito a `prefers-reduced-motion` e a `prefers-color-scheme`.
-- Estilos dedicados de impressão (`@media print`).
-
-## Convenções de código
-
-- Comentários, nomes de função e mensagens de interface em **português**.
-- Todo texto vindo da IA passa por `escapeHTML()` antes de ir para `innerHTML`.
-  Não abra exceção: a resposta da IA é conteúdo não confiável.
-- Toda chamada de rede passa por `fetchWithTimeout` / `postProxy`, que já cuidam
-  de prazo máximo, cancelamento e do código de erro.
-- Ao mexer em `style.css` ou `script.js`, incremente o `?v=` no `index.html` para
-  furar o cache dos navegadores.
-
-## Roadmap
-
-- [ ] Testes automatizados dos utilitários puros (`parseJSON`, `dataToText`, `isFichaValida`).
-- [ ] Dividir `script.js` em módulos ES (`api.js`, `render.js`, `store.js`, `ui.js`).
-- [ ] Service worker para leitura offline das fichas já visitadas.
-- [ ] Compartilhar ficha por link (`?q=termo`), com o estado na URL.
-- [ ] Cache das buscas recentes para não reconsultar a IA à toa.
+Compartilhar ficha por link, com o termo na URL. Guardar as buscas recentes para
+não consultar a IA duas vezes pela mesma coisa. Leitura offline das fichas já
+vistas. E, quando o `script.js` crescer mais um pouco, quebrar ele em módulos.
 
 ---
 
-Desenvolvido por [@_eckermann](https://www.instagram.com/_eckermann) · beta 1.0
+Feito por [@_eckermann](https://www.instagram.com/_eckermann) · beta 1.0
