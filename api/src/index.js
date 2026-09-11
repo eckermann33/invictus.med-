@@ -19,7 +19,11 @@
 import { usuarioAtual, solicitarLink, confirmarLink, sair } from "./auth.js";
 import { verificarCota, registrarUso, estadoDaConta } from "./planos.js";
 import { gerar, MODOS } from "./ia.js";
-import { listarItens, salvarItem, removerItem, limparItens } from "./db.js";
+import {
+  listarItens, salvarItem, removerItem, limparItens,
+  contarBusca, termosMaisBuscados, resumoDeUso,
+  salvarReporte, listarReportes, fichasComMaisReportes,
+} from "./db.js";
 
 const MAX_TERMO = 400;
 
@@ -85,6 +89,25 @@ export default {
       if (rota === "/itens") {
         if (!usuario) return json({ erro: "Entre na sua conta.", codigo: "SEM-SESSAO" }, 401, cabecalhos);
         return itens(request, env, usuario, url, cabecalhos);
+      }
+
+      /* ---- Relato de conteúdo errado ---- */
+      if (rota === "/reporte" && request.method === "POST") {
+        return reporte(request, env, usuario, cabecalhos);
+      }
+
+      /* ---- Painel do dono ---- */
+      if (rota === "/painel" && request.method === "GET") {
+        if (!ehDono(env, usuario)) {
+          return json({ erro: "Acesso restrito.", codigo: "DONO" }, 403, cabecalhos);
+        }
+        const [termos, resumo, reportes, piores] = await Promise.all([
+          termosMaisBuscados(env.DB, 30, 50),
+          resumoDeUso(env.DB, 30),
+          listarReportes(env.DB, 100),
+          fichasComMaisReportes(env.DB, 20),
+        ]);
+        return json({ resumo, termos, reportes, fichas_com_reportes: piores }, 200, cabecalhos);
       }
 
       /* ---- Geração de conteúdo ---- */
@@ -156,6 +179,10 @@ async function ia(request, env, usuario, cabecalhos) {
   const r = await gerar(env, modo, termo, corpo);
   if (!r.ok) return json({ erro: "Provedores indisponíveis.", codigo: r.codigo }, 503, cabecalhos);
 
+  // Contagem agregada por termo, desligada de quem buscou: é o que permite
+  // saber o que as pessoas procuram sem guardar o histórico de ninguém.
+  await contarBusca(env.DB, termo, modo).catch(() => {});
+
   if (usuario) {
     await registrarUso(env, usuario, modo);
     // O histórico acompanha a conta em vez de morrer com o navegador.
@@ -166,4 +193,26 @@ async function ia(request, env, usuario, cabecalhos) {
   }
 
   return json(r.dados, 200, cabecalhos);
+}
+
+/* O painel é do dono. Sem uma lista de e-mails autorizados em EMAIL_DONO,
+   ninguém entra — inclusive eu, se esquecer de configurar. */
+function ehDono(env, usuario) {
+  if (!usuario) return false;
+  const donos = String(env.EMAIL_DONO || "").split(",").map(e => e.trim().toLowerCase()).filter(Boolean);
+  return donos.includes(String(usuario.email || "").toLowerCase());
+}
+
+async function reporte(request, env, usuario, cabecalhos) {
+  const corpo = await request.json().catch(() => ({}));
+  const ficha = String(corpo.ficha || "").trim();
+  if (!ficha) return json({ erro: "Ficha não informada.", codigo: "FICHA" }, 400, cabecalhos);
+
+  await salvarReporte(env.DB, {
+    usuarioId: usuario?.id,
+    ficha,
+    secoes: Array.isArray(corpo.secoes) ? corpo.secoes.slice(0, 12).map(String) : [],
+    descricao: corpo.descricao,
+  });
+  return json({ ok: true }, 200, cabecalhos);
 }

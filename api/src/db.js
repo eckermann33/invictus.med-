@@ -150,3 +150,71 @@ export async function removerItem(db, usuarioId, tipo, nome) {
 export async function limparItens(db, usuarioId, tipo) {
   await db.prepare("DELETE FROM itens WHERE usuario_id = ? AND tipo = ?").bind(usuarioId, tipo).run();
 }
+
+/* ---------- Métricas ---------- */
+
+/* Conta o termo buscado, sem ligar a busca a quem a fez. Para decidir preço
+   e que fichas vale escrever à mão, a contagem por termo basta — e guardar
+   menos é sempre a opção mais segura. */
+export async function contarBusca(db, termo, modo) {
+  const t = String(termo || "").trim().toLowerCase().slice(0, 120);
+  if (!t) return;
+  await db.prepare(
+    `INSERT INTO buscas (termo, dia, modo, contagem) VALUES (?, ?, ?, 1)
+     ON CONFLICT(termo, dia, modo) DO UPDATE SET contagem = contagem + 1`)
+    .bind(t, diaUTC(), modo).run();
+}
+
+export async function termosMaisBuscados(db, dias = 30, limite = 50) {
+  const desde = diaUTC(Date.now() - dias * 86400000);
+  const r = await db.prepare(
+    `SELECT termo, SUM(contagem) AS total FROM buscas
+      WHERE dia >= ? AND modo = 'ficha'
+      GROUP BY termo ORDER BY total DESC LIMIT ?`).bind(desde, limite).all();
+  return (r && r.results) || [];
+}
+
+export async function resumoDeUso(db, dias = 30) {
+  const desde = diaUTC(Date.now() - dias * 86400000);
+  const porModo = await db.prepare(
+    `SELECT modo, SUM(contagem) AS total FROM buscas WHERE dia >= ? GROUP BY modo ORDER BY total DESC`)
+    .bind(desde).all();
+  const contas = await db.prepare("SELECT COUNT(*) AS n FROM usuarios").first();
+  const ativas = await db.prepare(
+    "SELECT COUNT(DISTINCT usuario_id) AS n FROM uso WHERE dia >= ?").bind(desde).first();
+  const assinantes = await db.prepare(
+    "SELECT COUNT(*) AS n FROM assinaturas WHERE status = 'ativa'").first();
+  return {
+    dias,
+    por_modo: (porModo && porModo.results) || [],
+    contas: Number(contas?.n || 0),
+    contas_ativas: Number(ativas?.n || 0),
+    assinantes: Number(assinantes?.n || 0),
+  };
+}
+
+/* ---------- Relatos de erro ---------- */
+
+export async function salvarReporte(db, { usuarioId, ficha, secoes, descricao }) {
+  await db.prepare(
+    `INSERT INTO reportes (id, usuario_id, ficha, secoes, descricao, criado_em)
+     VALUES (?, ?, ?, ?, ?, ?)`)
+    .bind(novoId(), usuarioId || null, String(ficha || "").slice(0, 200),
+          (secoes || []).join(", ").slice(0, 300), String(descricao || "").slice(0, 2000), agora())
+    .run();
+}
+
+export async function listarReportes(db, limite = 100) {
+  const r = await db.prepare(
+    `SELECT id, ficha, secoes, descricao, criado_em, resolvido
+       FROM reportes ORDER BY criado_em DESC LIMIT ?`).bind(limite).all();
+  return (r && r.results) || [];
+}
+
+/* Fichas com mais relatos: é por onde começar a substituir por texto curado. */
+export async function fichasComMaisReportes(db, limite = 20) {
+  const r = await db.prepare(
+    `SELECT ficha, COUNT(*) AS total FROM reportes
+      GROUP BY ficha ORDER BY total DESC LIMIT ?`).bind(limite).all();
+  return (r && r.results) || [];
+}

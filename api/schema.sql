@@ -62,3 +62,34 @@ CREATE TABLE IF NOT EXISTS itens (
   PRIMARY KEY (usuario_id, tipo, nome)
 );
 CREATE INDEX IF NOT EXISTS idx_itens_ts ON itens(usuario_id, tipo, ts DESC);
+
+-- =================================================================
+-- MÉTRICAS E RELATOS
+-- Sem isto, precificar é chute: dá para saber quantas buscas uma pessoa
+-- faz, mas não o que as pessoas buscam nem onde o modelo erra.
+-- =================================================================
+
+-- Termos buscados, agregados por dia. Guarda o termo, não quem buscou:
+-- para decidir preço e conteúdo, a contagem basta.
+CREATE TABLE IF NOT EXISTS buscas (
+  termo     TEXT NOT NULL,
+  dia       TEXT NOT NULL,        -- AAAA-MM-DD (UTC)
+  modo      TEXT NOT NULL,
+  contagem  INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (termo, dia, modo)
+);
+CREATE INDEX IF NOT EXISTS idx_buscas_dia ON buscas(dia);
+
+-- Relatos de conteúdo errado. Conteúdo gerado por IA erra; saber ONDE
+-- erra mais é o que permite substituir as partes críticas por texto
+-- escrito à mão.
+CREATE TABLE IF NOT EXISTS reportes (
+  id         TEXT PRIMARY KEY,
+  usuario_id TEXT REFERENCES usuarios(id) ON DELETE SET NULL,
+  ficha      TEXT NOT NULL,
+  secoes     TEXT,                -- lista separada por vírgula
+  descricao  TEXT,
+  criado_em  INTEGER NOT NULL,
+  resolvido  INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_reportes_data ON reportes(criado_em DESC);

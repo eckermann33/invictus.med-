@@ -16,6 +16,8 @@ database_id = "COLE-O-ID-DO-SEU-BANCO-AQUI"
 SITE_URL = "https://invictusmed.com.br"
 # Limite do plano gratuito (buscas de ficha por dia). Assinantes não têm este teto.
 LIMITE_GRATIS_DIA = "8"
+# Quem pode abrir /api/painel. Vazio = ninguém, nem você.
+EMAIL_DONO = ""
 
 # Secrets (npx wrangler secret put NOME):
 #   GROQ_KEY, GROK_KEY_2, GROQ_KEY_3, CEREBRAS_KEY  → provedores de IA

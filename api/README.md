@@ -56,6 +56,8 @@ para que o fluxo siga assim.
 | `POST /api/itens` | salva `{ tipo, nome }` |
 | `DELETE /api/itens` | remove um item, ou a lista toda se vier sem `nome` |
 | `POST /api/ia` | gera ficha, caso, quiz, flashcards, resumo, mapa ou ABNT |
+| `POST /api/reporte` | registra um relato de conteúdo errado |
+| `GET /api/painel` | métricas e relatos — restrito a `EMAIL_DONO` |
 
 ## Decisões que valem conhecer
 
@@ -65,6 +67,18 @@ como SHA-256. Se o banco vazar, ninguém entra com o que está gravado lá.
 **A conta é opcional.** Sem sessão o site continua funcionando, com um teto
 menor. Login é um ganho — histórico que acompanha a pessoa e mais buscas — não
 um pedágio.
+
+**As métricas não guardam quem buscou.** A tabela `buscas` conta termo por dia,
+e só. Para decidir preço e quais fichas vale escrever à mão, a contagem basta —
+e guardar menos é sempre a opção mais segura.
+
+**O painel é fechado por padrão.** Sem `EMAIL_DONO` configurado, ninguém entra,
+nem você. Defina-o no `wrangler.toml` com o e-mail que você usa para entrar:
+
+```toml
+[vars]
+EMAIL_DONO = "voce@exemplo.com"   # aceita vários, separados por vírgula
+```
 
 **Cota só nas fichas.** As ferramentas de estudo usam chave e cota separadas,
 então não consomem o limite diário.

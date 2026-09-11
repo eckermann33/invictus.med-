@@ -208,6 +208,68 @@ async function entrar(env, email) {
   check("origem estranha não é ecoada", r.headers.get("access-control-allow-origin") !== "https://site-clone.com");
 }
 
+/* ============ MÉTRICAS E RELATOS ============ */
+{
+  const env = novoEnv({ EMAIL_DONO: "dono@exemplo.com" });
+
+  // Buscas são contadas mesmo sem conta
+  await worker.fetch(post("/ia", { termo: "Hipertensão" }), env);
+  await worker.fetch(post("/ia", { termo: "hipertensão" }), env);
+  await worker.fetch(post("/ia", { termo: "Hepatite" }), env);
+  const linhas = env.DB._sqlite.prepare("SELECT termo, contagem FROM buscas ORDER BY contagem DESC").all();
+  check("busca anônima também é contada", linhas.length === 2, `${linhas.length} termos`);
+  check("termo é normalizado antes de contar",
+    linhas[0].termo === "hipertensão" && linhas[0].contagem === 2,
+    `${linhas[0].termo} = ${linhas[0].contagem}`);
+  const temUsuario = env.DB._sqlite.prepare("PRAGMA table_info(buscas)").all().some(c => /usuario/.test(c.name));
+  check("a contagem não guarda quem buscou", !temUsuario);
+
+  // Painel é restrito
+  let r = await worker.fetch(req("/painel"), env);
+  check("painel exige sessão", r.status === 403 && (await r.json()).codigo === "DONO");
+
+  const aluno = await entrar(env, "aluno@exemplo.com");
+  r = await worker.fetch(req("/painel", { headers: { Cookie: aluno.cookie } }), env);
+  check("usuário comum não vê o painel", r.status === 403);
+
+  const dono = await entrar(env, "dono@exemplo.com");
+  r = await worker.fetch(req("/painel", { headers: { Cookie: dono.cookie } }), env);
+  const painel = await r.json();
+  check("dono vê o painel", r.status === 200);
+  check("painel lista os termos mais buscados",
+    painel.termos[0].termo === "hipertensão" && painel.termos[0].total === 2,
+    JSON.stringify(painel.termos[0]));
+  check("painel resume contas e assinantes",
+    painel.resumo.contas === 2 && painel.resumo.assinantes === 0,
+    `${painel.resumo.contas} contas`);
+
+  // Relatos
+  r = await worker.fetch(post("/reporte", { ficha: "Hipertensão", secoes: ["Tratamento"], descricao: "dose errada" }), env);
+  check("relato aceito sem precisar de conta", r.status === 200);
+  r = await worker.fetch(post("/reporte", { ficha: "" }), env);
+  check("relato sem ficha é recusado", r.status === 400);
+  r = await worker.fetch(post("/reporte", { ficha: "Hipertensão", secoes: ["Diagnóstico"] },
+    { Cookie: aluno.cookie }), env);
+  check("relato com conta também funciona", r.status === 200);
+
+  r = await worker.fetch(req("/painel", { headers: { Cookie: dono.cookie } }), env);
+  const p2 = await r.json();
+  check("painel lista os relatos", p2.reportes.length === 2, `${p2.reportes.length} relatos`);
+  check("relato guarda a seção apontada",
+    p2.reportes.some(x => /Tratamento/.test(x.secoes || "")));
+  check("painel aponta a ficha com mais relatos",
+    p2.fichas_com_reportes[0].ficha === "Hipertensão" && p2.fichas_com_reportes[0].total === 2,
+    JSON.stringify(p2.fichas_com_reportes[0]));
+}
+
+/* Sem EMAIL_DONO configurado, ninguém entra no painel */
+{
+  const env = novoEnv();
+  const alguem = await entrar(env, "qualquer@exemplo.com");
+  const r = await worker.fetch(req("/painel", { headers: { Cookie: alguem.cookie } }), env);
+  check("sem EMAIL_DONO o painel fica fechado para todos", r.status === 403);
+}
+
 let falhas = 0;
 for (const x of resultados) { if (!x.ok) falhas++; console.log(`${x.ok ? "✅" : "❌"} ${x.nome}${x.extra ? "  ·  " + x.extra : ""}`); }
 console.log(`\n${resultados.length - falhas}/${resultados.length} verificações passaram`);
