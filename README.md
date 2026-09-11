@@ -104,10 +104,12 @@ os dados num banco D1 — detalhes em [`api/README.md`](api/README.md).
 
 A sessão vive num cookie `httpOnly`, que o JavaScript não consegue ler: um XSS
 não rouba o login. Por isso o site e a API precisam ficar no mesmo domínio —
-separados, o navegador trataria como cookie de terceiro e bloquearia. O Worker tenta os provedores em cascata:
-se o primeiro falhar — cota estourada, modelo fora do ar, resposta vazia — ele
-passa para o próximo sozinho. A aba de estudo usa uma chave separada, para não
-disputar cota com as fichas.
+separados, o navegador trataria como cookie de terceiro e bloquearia.
+
+Para falar com o modelo, o Worker tenta os provedores em cascata: se o primeiro
+falhar — cota estourada, modelo fora do ar, resposta vazia — ele passa para o
+próximo sozinho. A aba de estudo usa uma chave separada, para não disputar cota
+com as fichas.
 
 E se não houver IA configurada, buscar por "hipertensão" ou "diabetes" ainda
 funciona: essas duas fichas estão embutidas no código como demonstração.
