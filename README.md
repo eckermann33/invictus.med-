@@ -28,6 +28,12 @@ uma lista comprida.
 **Fisiopatologia em duas versões** — uma explicação simples e uma detalhada, em
 abas. Dá para começar pela simples e trocar quando quiser o mecanismo de verdade.
 
+Um botão de **modo script** reorganiza as mesmas seções na ordem em que o
+raciocínio clínico acontece — quem costuma ter, o que acontece no corpo, como
+se apresenta, como confirmar, com o que se confunde — e rotula o papel de cada
+bloco. Sem IA e sem conteúdo novo: é o mesmo material na ordem em que a memória
+guarda.
+
 Se o termo for amplo (hepatite, anemia, diabetes), a ficha ganha uma seção de
 variações com os subtipos. Se for um medicamento, ela troca de formato: princípio
 ativo, classe, mecanismo de ação, efeitos adversos, contraindicações e interações.
@@ -40,9 +46,21 @@ sob demanda: **quiz** de múltipla escolha com correção e explicação, **flas
 para revisão, **resumo** em tópicos e **mapa mental**. Cada uma só é gerada quando
 você clica — nada fica pesando enquanto você não pede.
 
-Tem também um **estudo de caso**: um paciente fictício com história, exame físico,
-exames e uma pergunta de raciocínio no fim, sem a resposta. Bom para testar se
-você realmente entendeu a condição, e não só decorou a lista.
+Tem também um **estudo de caso**, e ele funciona em duas etapas de propósito.
+Primeiro você vê o paciente — história, exame físico, exames — e precisa
+escrever sua hipótese, o que a sustenta e o que você não descarta. Só depois a
+conduta esperada aparece, com a sua hipótese lado a lado para comparar.
+
+Isso não é enfeite: ler resposta pronta não treina raciocínio. O que treina é
+se comprometer com uma hipótese antes, e é essa a base das estratégias de
+reflexão deliberada no ensino de raciocínio clínico. Se quiser, a IA ainda dá
+retorno sobre o seu raciocínio — apontando o que sustentou e o que faltou
+considerar, em vez de dar nota.
+
+No quiz dá para puxar os temas do seu próprio histórico com um clique: em vez
+de competir com bancos de centenas de milhares de questões, ele gera sobre
+exatamente o que você andou pesquisando. O placar final mostra o tempo e a
+média por questão.
 
 ## A aba de anamnese
 
