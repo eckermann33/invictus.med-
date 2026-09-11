@@ -34,7 +34,12 @@ const CONFIG = {
   // "gemini" = chave direto no navegador (grátis, mas a chave fica visível)
   // "openai" / "anthropic" = provedores pagos
   PROVIDER: "proxy",
-  PROXY_URL: "https://invictus-proxy.n9rn6tsb26.workers.dev/",   // ← URL do seu Worker
+  // Base da API. Com o site e a API no MESMO domínio (Cloudflare Pages +
+  // Worker em /api), o caminho relativo basta e o cookie de sessão funciona
+  // sem ser tratado como cookie de terceiro. Para desenvolver contra a API
+  // publicada, troque por uma URL absoluta.
+  API_URL: "/api",
+  PROXY_URL: "https://invictus-proxy.n9rn6tsb26.workers.dev/",   // ← Worker antigo (compatibilidade)
   MODEL: "gemini-2.5-flash",
   MAX_TOKENS: 8192,
   // Tempo máximo de espera por uma resposta (ms). Evita o carregamento infinito.
@@ -169,6 +174,20 @@ const els = {
   drawerList:  $("#drawerList"),
   drawerTools: $("#drawerTools"),
   drawerEmpty: $("#drawerEmpty"),
+  // Conta
+  contaModal:   $("#contaModal"),
+  contaScrim:   $("#contaScrim"),
+  contaRotulo:  $("#contaRotulo"),
+  contaForm:    $("#contaForm"),
+  contaEmail:   $("#contaEmail"),
+  contaEnviar:  $("#contaEnviar"),
+  contaErro:    $("#contaErro"),
+  contaPasso1:  $("#contaPasso1"),
+  contaPasso2:  $("#contaPasso2"),
+  contaPasso3:  $("#contaPasso3"),
+  contaEmailEnviado: $("#contaEmailEnviado"),
+  contaEmailAtual:   $("#contaEmailAtual"),
+  contaPlano:   $("#contaPlano"),
 };
 
 /* Estado em memória */
@@ -316,7 +335,8 @@ function hideSuggestions() {
    ================================================================= */
 /* O Worker está configurado? (aceita tanto o placeholder antigo quanto vazio) */
 const isProxyConfigured = () =>
-  Boolean(CONFIG.PROXY_URL) && !/INSERIR[-_]URL/i.test(CONFIG.PROXY_URL);
+  Boolean(CONFIG.API_URL) ||
+  (Boolean(CONFIG.PROXY_URL) && !/INSERIR[-_]URL/i.test(CONFIG.PROXY_URL));
 
 /* fetch com prazo máximo + cancelamento externo.
    Sem isso, uma resposta que nunca chega deixa o loader girando para sempre. */
@@ -345,14 +365,18 @@ async function fetchWithTimeout(url, init = {}, outerSignal) {
   }
 }
 
-/* Chamada única ao Worker — usada pela ficha, pelo estudo de caso,
-   pelas ferramentas de estudo e pelas referências em ABNT. */
+/* Chamada à API — usada pela ficha, pelo estudo de caso, pelas ferramentas
+   de estudo e pelas referências em ABNT.
+   credentials:"include" faz o cookie de sessão viajar junto, que é o que
+   permite ao servidor saber de quem é a cota e onde salvar o histórico. */
 async function postProxy(payload, outerSignal) {
-  if (!isProxyConfigured()) throw errWithCode("NO_PROXY", "NO_PROXY");
+  const alvo = CONFIG.API_URL ? `${CONFIG.API_URL}/ia` : CONFIG.PROXY_URL;
+  if (!alvo) throw errWithCode("NO_PROXY", "NO_PROXY");
 
-  const res = await fetchWithTimeout(CONFIG.PROXY_URL, {
+  const res = await fetchWithTimeout(alvo, {
     method: "POST",
     headers: { "content-type": "application/json" },
+    credentials: "include",
     body: JSON.stringify(payload),
   }, outerSignal);
 
@@ -564,6 +588,7 @@ async function analyze(termRaw) {
     stopThinking();
     hide(els.loader);
     show(els.results);
+    atualizarCota();
   } catch (err) {
     if (seq !== searchSeq || codeOf(err) === "CANCELLED") return;
     stopThinking();
@@ -581,7 +606,19 @@ function showError(err) {
   let msg;
   let soft = true; // visual suave (não vermelho) para mensagens ao usuário
 
-  if (/429|limite|limit|quota|exceeded|resource_exhausted/i.test(m + " " + codigo)) {
+  if (codigo === "LIMITE") {
+    // Teto do plano gratuito. É o momento em que a assinatura faz sentido —
+    // mas sem empurrão: diz o que aconteceu e oferece o caminho.
+    soft = true;
+    const quando = sessao ? "hoje" : "hoje neste navegador";
+    msg = `<b>Você usou suas buscas de ${escapeHTML(quando)}.</b> O contador zera amanhã.
+      ${sessao ? "" : "<br>Entrar na sua conta libera mais buscas por dia."}
+      ${sessao ? "" : `<br><button class="notice__cta" id="noticeEntrar" type="button">Entrar na minha conta</button>`}`;
+  } else if (codigo === "SEM-SESSAO") {
+    soft = true;
+    msg = `<b>Entre na sua conta para continuar.</b>
+      <br><button class="notice__cta" id="noticeEntrar" type="button">Entrar</button>`;
+  } else if (/429|limite|limit|quota|exceeded|resource_exhausted/i.test(m + " " + codigo)) {
     // Limite atingido — mensagem calma, sem jargão
     msg = `<b>Muitas pesquisas no momento.</b> O site atingiu o limite temporário de consultas.
       Tente novamente daqui a alguns minutos. 🙂`;
@@ -607,6 +644,7 @@ function showError(err) {
   els.notice.className = "notice" + (soft ? " notice--soft" : "");
   els.notice.innerHTML = msg + `<span class="notice__code">cód. ${escapeHTML(codigo)}</span>`;
   show(els.notice);
+  $("#noticeEntrar", els.notice)?.addEventListener("click", abrirConta);
 }
 
 /* =================================================================
@@ -1407,6 +1445,7 @@ function addToHistory(nome) {
   const h = readList(HKEY).filter(x => !mesmoNome(x.nome, nome));
   h.unshift({ nome, ts: Date.now() });
   store.set(HKEY, h.slice(0, 40));
+  empurrar("historico", nome);
 }
 
 function isFavorite(nome) {
@@ -1427,6 +1466,7 @@ function toggleFavorite(d) {
     toast("Adicionado aos favoritos.");
   }
   store.set(FKEY, f);
+  empurrar("favorito", nome, exists);
   // Atualiza botão
   const btn = $("#tFav");
   if (btn) {
@@ -1527,12 +1567,15 @@ function openDrawer(kind) {
       const key = isFavMode ? FKEY : HKEY;
       const name = b.dataset.del;
       store.set(key, readList(key).filter(x => x.nome !== name));
+      empurrar(isFavMode ? "favorito" : "historico", name, true);
       openDrawer(kind);
     });
   });
   const clearBtn = $("#drawerClear");
   if (clearBtn) clearBtn.addEventListener("click", () => {
-    store.set(isFavMode ? FKEY : HKEY, []); openDrawer(kind);
+    store.set(isFavMode ? FKEY : HKEY, []);
+    empurrarLimpeza(isFavMode ? "favorito" : "historico");
+    openDrawer(kind);
   });
 
   revealDrawer();
@@ -1706,7 +1749,234 @@ const DEMO = {
 };
 
 /* =================================================================
-   14) LIGAÇÃO DE EVENTOS GLOBAIS
+   14) CONTA — entrar, sair e sincronizar
+   -----------------------------------------------------------------
+   O login é por link mágico: a pessoa informa o e-mail, recebe um link
+   e entra. Não existe senha para guardar.
+
+   A conta é OPCIONAL. Sem entrar, o site funciona como sempre funcionou,
+   guardando tudo no navegador. Entrando, histórico e favoritos passam a
+   acompanhar a pessoa em qualquer aparelho.
+   ================================================================= */
+
+let sessao = null;          // { email, plano, restantes, limite, ilimitado }
+let contaFocoAnterior = null;
+
+async function apiConta(caminho, opcoes = {}) {
+  const res = await fetch(`${CONFIG.API_URL}${caminho}`, {
+    credentials: "include",
+    headers: { "content-type": "application/json" },
+    ...opcoes,
+  });
+  const dados = await res.json().catch(() => ({}));
+  if (!res.ok) throw errWithCode(dados.erro || `HTTP ${res.status}`, dados.codigo || `HTTP-${res.status}`);
+  return dados;
+}
+
+/* ---------- Estado ---------- */
+
+async function carregarConta() {
+  try {
+    const d = await apiConta("/conta");
+    sessao = d.autenticado ? d : null;
+  } catch {
+    sessao = null;          // API fora do ar não pode quebrar o site
+  }
+  atualizarBotaoConta();
+  if (sessao) await puxarDoServidor();
+}
+
+function atualizarBotaoConta() {
+  const btn = $("#btnConta");
+  if (!btn) return;
+  btn.classList.toggle("is-logado", Boolean(sessao));
+  if (els.contaRotulo) {
+    els.contaRotulo.textContent = sessao ? "Conta" : "Entrar";
+  }
+  btn.setAttribute("aria-label", sessao ? `Conta de ${sessao.email}` : "Entrar na sua conta");
+}
+
+/* ---------- Sincronização ----------
+   O localStorage continua sendo a cópia de trabalho: assim tudo que já
+   existia segue funcionando sem virar assíncrono. Com sessão ativa, as
+   mudanças também sobem para o servidor. */
+
+async function puxarDoServidor() {
+  try {
+    const [hist, favs] = await Promise.all([
+      apiConta("/itens?tipo=historico"),
+      apiConta("/itens?tipo=favorito"),
+    ]);
+    mesclarLocal(HKEY, hist.itens || []);
+    mesclarLocal(FKEY, favs.itens || []);
+  } catch { /* segue com o que já está no navegador */ }
+}
+
+/* Junta o que veio do servidor com o que já existia aqui, sem duplicar. */
+function mesclarLocal(chave, doServidor) {
+  const local = readList(chave);
+  const mapa = new Map();
+  for (const item of [...doServidor, ...local]) {
+    if (!item || !item.nome) continue;
+    const k = String(item.nome).trim().toLowerCase();
+    const anterior = mapa.get(k);
+    if (!anterior || Number(item.ts) > Number(anterior.ts)) {
+      mapa.set(k, { nome: item.nome, ts: Number(item.ts) || Date.now() });
+    }
+  }
+  const juntos = [...mapa.values()].sort((a, b) => b.ts - a.ts).slice(0, 200);
+  store.set(chave, juntos);
+}
+
+/* Envio em segundo plano: se falhar, o dado continua salvo localmente. */
+function empurrar(tipo, nome, remover = false) {
+  if (!sessao) return;
+  apiConta("/itens", {
+    method: remover ? "DELETE" : "POST",
+    body: JSON.stringify({ tipo, nome }),
+  }).catch(() => {});
+}
+
+function empurrarLimpeza(tipo) {
+  if (!sessao) return;
+  apiConta("/itens", { method: "DELETE", body: JSON.stringify({ tipo }) }).catch(() => {});
+}
+
+/* ---------- Modal ---------- */
+
+function mostrarPasso(n) {
+  hide(els.contaErro);
+  els.contaPasso1.hidden = n !== 1;
+  els.contaPasso2.hidden = n !== 2;
+  els.contaPasso3.hidden = n !== 3;
+}
+
+function abrirConta() {
+  contaFocoAnterior = document.activeElement;
+  if (sessao) {
+    els.contaEmailAtual.textContent = sessao.email;
+    els.contaPlano.innerHTML = sessao.ilimitado
+      ? `<span class="plano-tag">Assinante</span><span>Buscas ilimitadas.</span>`
+      : `<span class="plano-tag">Gratuito</span><span>Restam <b>${Number(sessao.restantes) || 0}</b> de ${Number(sessao.limite) || 0} buscas hoje.</span>`;
+    mostrarPasso(3);
+  } else {
+    mostrarPasso(1);
+  }
+  show(els.contaScrim);
+  show(els.contaModal);
+  document.addEventListener("keydown", teclasConta, true);
+  requestAnimationFrame(() => {
+    (sessao ? $("#contaSair") : els.contaEmail)?.focus();
+  });
+}
+
+function fecharConta() {
+  if (els.contaModal.hidden) return;
+  hide(els.contaModal);
+  hide(els.contaScrim);
+  document.removeEventListener("keydown", teclasConta, true);
+  if (contaFocoAnterior && typeof contaFocoAnterior.focus === "function") contaFocoAnterior.focus();
+  contaFocoAnterior = null;
+}
+
+/* Esc fecha, Tab não escapa do diálogo */
+function teclasConta(e) {
+  if (els.contaModal.hidden) return;
+  if (e.key === "Escape") { e.stopPropagation(); fecharConta(); return; }
+  if (e.key !== "Tab") return;
+  const foco = $$("button, input, [href]", els.contaModal).filter(el => !el.disabled && el.offsetParent !== null);
+  if (!foco.length) return;
+  const primeiro = foco[0], ultimo = foco[foco.length - 1];
+  if (!els.contaModal.contains(document.activeElement)) { e.preventDefault(); primeiro.focus(); }
+  else if (e.shiftKey && document.activeElement === primeiro) { e.preventDefault(); ultimo.focus(); }
+  else if (!e.shiftKey && document.activeElement === ultimo) { e.preventDefault(); primeiro.focus(); }
+}
+
+function erroConta(msg) {
+  els.contaErro.textContent = msg;
+  show(els.contaErro);
+}
+
+/* ---------- Fluxo de entrada ---------- */
+
+async function pedirLink(e) {
+  if (e) e.preventDefault();
+  const email = (els.contaEmail.value || "").trim();
+  if (!email) { els.contaEmail.focus(); return; }
+
+  els.contaEnviar.disabled = true;
+  els.contaEnviar.textContent = "Enviando…";
+  hide(els.contaErro);
+
+  try {
+    await apiConta("/auth/solicitar", { method: "POST", body: JSON.stringify({ email }) });
+    els.contaEmailEnviado.textContent = email;
+    mostrarPasso(2);
+  } catch (err) {
+    const cod = codeOf(err);
+    erroConta(
+      cod === "EMAIL"  ? "Esse e-mail não parece válido. Confira e tente de novo." :
+      cod === "ESPERA" ? "Acabei de enviar um link. Espere um minutinho antes de pedir outro." :
+      "Não consegui enviar o e-mail agora. Tente novamente em instantes.");
+  } finally {
+    els.contaEnviar.disabled = false;
+    els.contaEnviar.textContent = "Receber link de acesso";
+  }
+}
+
+/* Chegou pelo link do e-mail: /entrar?token=... */
+async function confirmarTokenDaURL() {
+  const params = new URLSearchParams(location.search);
+  const token = params.get("token");
+  if (!token) return;
+
+  // Tira o token da barra de endereços antes de qualquer coisa: ele não deve
+  // sobreviver no histórico do navegador nem ser compartilhado sem querer.
+  const limpa = location.pathname.replace(/\/entrar\/?$/, "/") || "/";
+  history.replaceState(null, "", limpa);
+
+  try {
+    await apiConta("/auth/confirmar", { method: "POST", body: JSON.stringify({ token }) });
+    await carregarConta();
+    toast("Tudo certo, você entrou! 👋");
+  } catch {
+    toast("Esse link expirou ou já foi usado. Peça outro.");
+    abrirConta();
+  }
+}
+
+async function sairDaConta() {
+  try { await apiConta("/auth/sair", { method: "POST" }); } catch {}
+  sessao = null;
+  atualizarBotaoConta();
+  fecharConta();
+  toast("Você saiu da conta.");
+}
+
+/* Depois de cada busca, o contador do plano gratuito muda. */
+async function atualizarCota() {
+  if (!sessao) return;
+  try {
+    const d = await apiConta("/conta");
+    if (d.autenticado) sessao = d;
+  } catch {}
+}
+
+function ligarEventosConta() {
+  $("#btnConta")?.addEventListener("click", abrirConta);
+  $("#contaFechar")?.addEventListener("click", fecharConta);
+  els.contaScrim?.addEventListener("click", fecharConta);
+  els.contaForm?.addEventListener("submit", pedirLink);
+  $("#contaSair")?.addEventListener("click", sairDaConta);
+  $("#contaTentarDeNovo")?.addEventListener("click", () => {
+    mostrarPasso(1);
+    els.contaEmail.value = "";
+    els.contaEmail.focus();
+  });
+}
+
+/* =================================================================
+   15) LIGAÇÃO DE EVENTOS GLOBAIS
    ================================================================= */
 function bindGlobalEvents() {
   // Busca
@@ -1774,10 +2044,14 @@ function updateSuggHighlight(items) {
 }
 
 /* =================================================================
-   15) INICIALIZAÇÃO
+   16) INICIALIZAÇÃO
    ================================================================= */
 document.addEventListener("DOMContentLoaded", () => {
   initTheme();
   initVoice();
   bindGlobalEvents();
+  ligarEventosConta();
+  // O token do link do e-mail vem primeiro: ele já deixa a sessão pronta
+  // antes de carregarConta() perguntar quem é o usuário.
+  confirmarTokenDaURL().then(carregarConta);
 });

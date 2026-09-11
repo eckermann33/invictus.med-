@@ -1,0 +1,23 @@
+name = "invictus-api"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+# O site (Cloudflare Pages) e esta API precisam ficar no MESMO domínio para o
+# cookie de sessão funcionar sem ser tratado como cookie de terceiro.
+# Ex.: site em invictusmed.com.br e a API em invictusmed.com.br/api/*
+# routes = [{ pattern = "invictusmed.com.br/api/*", zone_name = "invictusmed.com.br" }]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "invictus"
+database_id = "COLE-O-ID-DO-SEU-BANCO-AQUI"
+
+[vars]
+SITE_URL = "https://invictusmed.com.br"
+# Limite do plano gratuito (buscas de ficha por dia). Assinantes não têm este teto.
+LIMITE_GRATIS_DIA = "8"
+
+# Secrets (npx wrangler secret put NOME):
+#   GROQ_KEY, GROK_KEY_2, GROQ_KEY_3, CEREBRAS_KEY  → provedores de IA
+#   SESSION_SECRET                                  → assina os tokens de sessão
+#   RESEND_KEY                                      → envio do e-mail de login

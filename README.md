@@ -53,6 +53,19 @@ referências já formatadas em ABNT, para colar direto no trabalho.
 
 No rodapé tem um "Aprovado por Dr. House". Passe o mouse em cima.
 
+## Conta
+
+Dá para usar o site sem conta nenhuma — foi assim que ele nasceu e continua
+sendo. Mas criar uma resolve um incômodo real: histórico e favoritos deixam de
+morrer quando você troca de celular ou limpa o navegador.
+
+O login é sem senha. Você digita o e-mail, recebe um link e entra com um clique.
+Não há senha para esquecer, e eu não guardo nenhuma.
+
+Quem entra também ganha mais buscas por dia. O limite existe porque cada busca
+custa uma chamada de IA — e é o que vai sustentar a assinatura, quando ela
+chegar.
+
 ## Sobre o conteúdo
 
 As fichas são geradas por IA no momento da busca. É isso que permite pesquisar
@@ -82,10 +95,16 @@ se não carregar, o botão de PDF cai sozinho para a janela de impressão.
 | `index.html` | marcação, metadados e o script curto que aplica o tema antes da primeira pintura |
 | `style.css` | tokens de cor, tema claro/escuro, responsivo e estilos de impressão |
 | `script.js` | busca, chamadas à IA, renderização, histórico, favoritos, voz e exportação |
-| `proxy-worker.example.js` | o Cloudflare Worker que guarda a chave da IA |
+| `api/` | o Worker: contas, limites de plano e as chamadas à IA |
+| `proxy-worker.example.js` | versão anterior do Worker, sem contas (referência) |
 
 A chave da IA nunca chega ao navegador. Quem fala com o modelo é um Cloudflare
-Worker, e o site só conversa com ele. O Worker tenta os provedores em cascata:
+Worker, e o site só conversa com ele. Esse mesmo Worker cuida das contas, com
+os dados num banco D1 — detalhes em [`api/README.md`](api/README.md).
+
+A sessão vive num cookie `httpOnly`, que o JavaScript não consegue ler: um XSS
+não rouba o login. Por isso o site e a API precisam ficar no mesmo domínio —
+separados, o navegador trataria como cookie de terceiro e bloquearia. O Worker tenta os provedores em cascata:
 se o primeiro falhar — cota estourada, modelo fora do ar, resposta vazia — ele
 passa para o próximo sozinho. A aba de estudo usa uma chave separada, para não
 disputar cota com as fichas.
@@ -220,9 +239,11 @@ a janela de impressão. O site continua funcionando.
 
 ## O que ainda falta
 
-Compartilhar ficha por link, com o termo na URL. Guardar as buscas recentes para
-não consultar a IA duas vezes pela mesma coisa. Leitura offline das fichas já
-vistas. E, quando o `script.js` crescer mais um pouco, quebrar ele em módulos.
+A assinatura mensal — a estrutura de conta e plano já está pronta, falta ligar o
+pagamento. Compartilhar ficha por link, com o termo na URL. Guardar as buscas
+recentes para não consultar a IA duas vezes pela mesma coisa. Leitura offline
+das fichas já vistas. E, quando o `script.js` crescer mais um pouco, quebrar ele
+em módulos.
 
 ---
 

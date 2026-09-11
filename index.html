@@ -39,7 +39,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet" />
 
-  <link rel="stylesheet" href="style.css?v=13" />
+  <link rel="stylesheet" href="style.css?v=14" />
 </head>
 <body>
 
@@ -71,6 +71,10 @@
       <button class="icon-btn" id="btnFavorites" type="button" aria-label="Abrir favoritos">
         <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 17.3 6.2 20.5l1.1-6.5L2.6 9.4l6.5-.9L12 2.6l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
         <span class="icon-btn__label">Favoritos</span>
+      </button>
+      <button class="icon-btn" id="btnConta" type="button" aria-label="Entrar na sua conta">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="8" r="3.6" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5 20a7 7 0 0 1 14 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <span class="icon-btn__label" id="contaRotulo">Entrar</span>
       </button>
       <button class="icon-btn" id="btnTheme" type="button" aria-label="Alternar tema claro/escuro">
         <svg class="icon-sun" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2v2.5M12 19.5V22M4.2 4.2l1.8 1.8M18 18l1.8 1.8M2 12h2.5M19.5 12H22M4.2 19.8 6 18M18 6l1.8-1.8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
@@ -251,6 +255,55 @@
     <p class="drawer__empty" id="drawerEmpty" hidden>Nada por aqui ainda.</p>
   </aside>
 
+  <!-- ===================== CONTA (entrar / sair) ===================== -->
+  <div class="modal-scrim" id="contaScrim" hidden></div>
+  <div class="modal" id="contaModal" hidden role="dialog" aria-modal="true" aria-labelledby="contaTitulo">
+    <button class="modal__fechar" id="contaFechar" type="button" aria-label="Fechar">
+      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </button>
+
+    <!-- Passo 1: pedir o e-mail -->
+    <div id="contaPasso1">
+      <h2 class="modal__titulo" id="contaTitulo">Entrar</h2>
+      <p class="modal__texto">
+        Com uma conta, seu histórico e seus favoritos acompanham você em qualquer
+        aparelho — e você ganha mais buscas por dia.
+      </p>
+      <form class="modal__form" id="contaForm">
+        <label class="modal__label" for="contaEmail">Seu e-mail</label>
+        <input class="modal__input" id="contaEmail" type="email" autocomplete="email"
+               inputmode="email" placeholder="voce@exemplo.com" required />
+        <button class="btn btn--primary modal__btn" id="contaEnviar" type="submit">
+          Receber link de acesso
+        </button>
+      </form>
+      <p class="modal__nota">Sem senha. Você recebe um link por e-mail e entra com um clique.</p>
+    </div>
+
+    <!-- Passo 2: e-mail enviado -->
+    <div id="contaPasso2" hidden>
+      <div class="modal__ok" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="34" height="34"><path d="M4 6h16v12H4z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m4 7 8 6 8-6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+      </div>
+      <h2 class="modal__titulo">Confira seu e-mail</h2>
+      <p class="modal__texto">
+        Mandei um link de acesso para <b id="contaEmailEnviado"></b>.
+        Ele vale por 15 minutos e só funciona uma vez.
+      </p>
+      <p class="modal__nota">Não chegou? Olhe no spam, ou <button class="link-btn" id="contaTentarDeNovo" type="button">tente outro e-mail</button>.</p>
+    </div>
+
+    <!-- Passo 3: já está dentro -->
+    <div id="contaPasso3" hidden>
+      <h2 class="modal__titulo">Sua conta</h2>
+      <p class="modal__email" id="contaEmailAtual"></p>
+      <div class="modal__plano" id="contaPlano"></div>
+      <button class="btn modal__btn modal__btn--sair" id="contaSair" type="button">Sair da conta</button>
+    </div>
+
+    <p class="modal__erro" id="contaErro" hidden></p>
+  </div>
+
   <!-- Notificação flutuante (toast) -->
   <div class="toast" id="toast" hidden role="status"></div>
 
@@ -258,6 +311,6 @@
        Sobre travar a versão com SRI (integrity), veja o README. -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"
           crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
-  <script src="script.js?v=13" defer></script>
+  <script src="script.js?v=14" defer></script>
 </body>
 </html>
