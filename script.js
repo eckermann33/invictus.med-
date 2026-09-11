@@ -57,6 +57,7 @@ const PROJECTS = [
   { nome: "Teste para prática de Neuro", url: "https://eckermann33.github.io/prova-neuro-/" },
   { nome: "Conversor de arquivos", url: "https://eckermann33.github.io/conversor-de-arquivos/" },
   { nome: "Instagram — @_eckermann", url: "https://www.instagram.com/_eckermann" },
+  { nome: "DPOC-CLINICO", url: "https://eckermann33.github.io/DPOC-Clinico/" },
   // { nome: "Outro projeto", url: "https://..." },
 ];
 
