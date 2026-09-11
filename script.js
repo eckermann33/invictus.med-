@@ -548,6 +548,7 @@ async function analyze(termRaw) {
   hide(els.notice);
   hide(els.results);
   hide(els.studyView);
+  hide($("#anamneseView"));
   hide(els.empty);
   hide(els.hero);
   show(els.loader);
@@ -1773,11 +1774,552 @@ function updateSuggHighlight(items) {
   }
 }
 
+
 /* =================================================================
-   15) INICIALIZAÇÃO
+   16) ANAMNESE ESTRUTURADA
+   -----------------------------------------------------------------
+   A ideia é digitar o mínimo possível. Quase tudo é clique: o texto
+   final é montado por modelo, de forma determinística — sem IA, sem
+   custo e sem risco de invenção.
+
+   A IA entra em UM ponto só: transformar a queixa e a história escritas
+   de forma solta ("dor na barriga há 3 dias, piora depois de comer")
+   em prosa clínica. E mesmo isso é opcional — o texto sai completo sem.
+
+   Privacidade: não existe campo de nome, CPF ou prontuário. Só o que a
+   pessoa escreve na queixa e na história vai para a IA; identificação,
+   antecedentes e hábitos nunca saem daqui.
+   ================================================================= */
+
+/* Interrogatório sintomatológico, por aparelho. Cada sintoma vira um
+   chip de três estados: não abordado → refere → nega. */
+const ISDA = [
+  { sistema: "Geral", sintomas: ["Febre", "Astenia", "Perda de peso", "Ganho de peso", "Sudorese noturna", "Calafrios", "Hiporexia"] },
+  { sistema: "Pele e fâneros", sintomas: ["Prurido", "Lesões de pele", "Alteração de coloração", "Queda de cabelo", "Alteração ungueal"] },
+  { sistema: "Cabeça e pescoço", sintomas: ["Cefaleia", "Tontura", "Vertigem", "Dor cervical", "Adenomegalia"] },
+  { sistema: "Olhos", sintomas: ["Turvação visual", "Dor ocular", "Hiperemia", "Diplopia", "Fotofobia", "Lacrimejamento"] },
+  { sistema: "Otorrinolaringológico", sintomas: ["Otalgia", "Hipoacusia", "Zumbido", "Obstrução nasal", "Rinorreia", "Epistaxe", "Odinofagia", "Rouquidão"] },
+  { sistema: "Cardiovascular", sintomas: ["Dor torácica", "Palpitações", "Dispneia aos esforços", "Ortopneia", "Dispneia paroxística noturna", "Edema de membros inferiores", "Síncope", "Claudicação"] },
+  { sistema: "Respiratório", sintomas: ["Tosse seca", "Tosse produtiva", "Expectoração", "Hemoptise", "Dispneia", "Sibilância", "Dor pleurítica"] },
+  { sistema: "Digestório", sintomas: ["Náuseas", "Vômitos", "Pirose", "Disfagia", "Dor abdominal", "Distensão abdominal", "Diarreia", "Constipação", "Melena", "Hematoquezia", "Icterícia"] },
+  { sistema: "Geniturinário", sintomas: ["Disúria", "Polaciúria", "Urgência miccional", "Noctúria", "Hematúria", "Incontinência", "Corrimento", "Dor lombar"] },
+  { sistema: "Musculoesquelético", sintomas: ["Artralgia", "Mialgia", "Rigidez matinal", "Edema articular", "Lombalgia", "Limitação de movimento"] },
+  { sistema: "Neurológico", sintomas: ["Convulsões", "Parestesias", "Paresia", "Alteração da marcha", "Tremor", "Alteração de memória", "Alteração da fala"] },
+  { sistema: "Psiquiátrico", sintomas: ["Humor deprimido", "Ansiedade", "Insônia", "Hipersonia", "Anedonia", "Ideação suicida", "Alteração do apetite"] },
+  { sistema: "Endócrino", sintomas: ["Intolerância ao calor", "Intolerância ao frio", "Polidipsia", "Poliúria", "Polifagia"] },
+];
+
+/* Comorbidades mais frequentes — clicar é mais rápido que digitar. */
+const COMORBIDADES = [
+  "Hipertensão arterial", "Diabetes mellitus", "Dislipidemia", "Obesidade",
+  "Asma", "DPOC", "Cardiopatia", "Infarto prévio", "AVC prévio",
+  "Doença renal crônica", "Hepatopatia", "Neoplasia", "Hipotireoidismo",
+  "Hipertireoidismo", "Depressão", "Ansiedade", "Epilepsia",
+  "Doença reumatológica", "HIV", "Tuberculose prévia",
+];
+
+const ALERGIAS = ["Dipirona", "AAS", "Anti-inflamatórios", "Penicilina", "Sulfa", "Iodo/contraste", "Látex", "Alimentos"];
+
+const FAMILIARES = [
+  "Hipertensão arterial", "Diabetes mellitus", "Cardiopatia isquêmica precoce",
+  "AVC", "Neoplasia", "Dislipidemia", "Doença renal", "Doença autoimune",
+  "Transtorno psiquiátrico", "Tuberculose",
+];
+
+/* Etapas do roteiro. "campos" descreve o formulário de forma declarativa,
+   para a marcação sair daqui e não ficar espalhada no HTML. */
+const ETAPAS = [
+  {
+    id: "identificacao",
+    titulo: "Identificação",
+    resumo: "Quem é o paciente",
+    campos: [
+      { id: "iniciais", tipo: "texto", rotulo: "Iniciais", dica: "Ex.: J.S.M. — nunca o nome completo", curto: true },
+      { id: "idade", tipo: "numero", rotulo: "Idade", sufixo: "anos", curto: true, min: 0, max: 120 },
+      { id: "sexo", tipo: "opcoes", rotulo: "Sexo", opcoes: ["Feminino", "Masculino"] },
+      { id: "estadoCivil", tipo: "opcoes", rotulo: "Estado civil", opcoes: ["Solteiro(a)", "Casado(a)", "União estável", "Divorciado(a)", "Viúvo(a)"] },
+      { id: "profissao", tipo: "texto", rotulo: "Profissão", dica: "Opcional" },
+      { id: "procedencia", tipo: "texto", rotulo: "Natural e procedente de", dica: "Opcional" },
+    ],
+  },
+  {
+    id: "queixa",
+    titulo: "Queixa e história",
+    resumo: "A parte escrita",
+    aviso: "Escreva solto, do jeito que o paciente contou. É esta a parte que a IA organiza depois — e a única que sai deste navegador.",
+    campos: [
+      { id: "queixa", tipo: "texto", rotulo: "Queixa principal", dica: 'Como o paciente diz. Ex.: "dor na barriga"' },
+      { id: "duracao", tipo: "texto", rotulo: "Há quanto tempo", dica: "Ex.: 3 dias, 2 semanas", curto: true },
+      { id: "hda", tipo: "area", rotulo: "História da doença atual", linhas: 7,
+        dica: "Conte como começou, como evoluiu, o que melhora e o que piora, o que já foi feito. Pode escrever corrido e informal." },
+    ],
+  },
+  {
+    id: "isda",
+    titulo: "Interrogatório",
+    resumo: "Sintomas por aparelho",
+    aviso: "Clique uma vez para <b>refere</b>, outra para <b>nega</b>, outra para voltar ao neutro. O que ficar neutro não entra no texto.",
+    isda: true,
+  },
+  {
+    id: "antecedentes",
+    titulo: "Antecedentes",
+    resumo: "Doenças, cirurgias, medicações",
+    campos: [
+      { id: "comorbidades", tipo: "chips", rotulo: "Comorbidades", itens: COMORBIDADES },
+      { id: "comorbidadesOutras", tipo: "texto", rotulo: "Outra comorbidade", dica: "Opcional" },
+      { id: "cirurgias", tipo: "area", rotulo: "Cirurgias prévias", linhas: 2, dica: "Ex.: apendicectomia em 2019" },
+      { id: "alergias", tipo: "chips", rotulo: "Alergias", itens: ALERGIAS },
+      { id: "alergiasOutras", tipo: "texto", rotulo: "Outra alergia", dica: "Opcional" },
+      { id: "medicacoes", tipo: "area", rotulo: "Medicações em uso", linhas: 3, dica: "Nome e posologia, uma por linha" },
+      { id: "internacoes", tipo: "texto", rotulo: "Internações prévias", dica: "Opcional" },
+    ],
+  },
+  {
+    id: "habitos",
+    titulo: "Hábitos e família",
+    resumo: "Vida e antecedentes familiares",
+    campos: [
+      { id: "tabagismo", tipo: "opcoes", rotulo: "Tabagismo", opcoes: ["Nega", "Ex-tabagista", "Tabagista atual"] },
+      { id: "cigarrosDia", tipo: "numero", rotulo: "Cigarros por dia", curto: true, min: 0, max: 200, depende: { campo: "tabagismo", valores: ["Ex-tabagista", "Tabagista atual"] } },
+      { id: "anosFumo", tipo: "numero", rotulo: "Por quantos anos", curto: true, min: 0, max: 90, depende: { campo: "tabagismo", valores: ["Ex-tabagista", "Tabagista atual"] } },
+      { id: "etilismo", tipo: "opcoes", rotulo: "Etilismo", opcoes: ["Nega", "Social", "Uso regular", "Uso pesado"] },
+      { id: "etilismoDetalhe", tipo: "texto", rotulo: "Quanto e com que frequência", dica: "Ex.: 4 latas nos fins de semana", depende: { campo: "etilismo", valores: ["Social", "Uso regular", "Uso pesado"] } },
+      { id: "drogas", tipo: "opcoes", rotulo: "Drogas ilícitas", opcoes: ["Nega", "Sim"] },
+      { id: "drogasDetalhe", tipo: "texto", rotulo: "Quais", depende: { campo: "drogas", valores: ["Sim"] } },
+      { id: "atividade", tipo: "opcoes", rotulo: "Atividade física", opcoes: ["Sedentário", "Irregular", "Regular"] },
+      { id: "sono", tipo: "opcoes", rotulo: "Sono", opcoes: ["Preservado", "Alterado"] },
+      { id: "alimentacao", tipo: "texto", rotulo: "Alimentação", dica: "Opcional. Ex.: rica em ultraprocessados" },
+      { id: "familiares", tipo: "chips", rotulo: "Antecedentes familiares", itens: FAMILIARES },
+      { id: "familiaresDetalhe", tipo: "texto", rotulo: "Detalhe dos antecedentes familiares", dica: "Opcional. Ex.: pai com IAM aos 52 anos" },
+    ],
+  },
+  { id: "resultado", titulo: "Texto final", resumo: "Revisar e copiar", resultado: true },
+];
+
+/* ---------- Estado ---------- */
+const AKEY = "invictus.anamnese";
+let anamEtapa = 0;
+let anamDados = {};       // { campoId: valor }  +  { isda: { "Sistema::Sintoma": "refere"|"nega" } }
+
+const anamPadrao = () => ({ isda: {} });
+
+function anamCarregar() {
+  const salvo = store.get(AKEY, null);
+  anamDados = (salvo && typeof salvo === "object") ? { ...anamPadrao(), ...salvo } : anamPadrao();
+  if (!anamDados.isda || typeof anamDados.isda !== "object") anamDados.isda = {};
+}
+const anamSalvar = () => store.set(AKEY, anamDados);
+
+/* ---------- Abertura e fechamento ---------- */
+function abrirAnamnese() {
+  anamCarregar();
+  hide(els.results); hide(els.empty); hide(els.notice); hide(els.loader); hide(els.hero); hide(els.studyView);
+  show($("#anamneseView"));
+  anamRenderizar();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function fecharAnamnese() {
+  hide($("#anamneseView"));
+  if (currentData) show(els.results); else { show(els.hero); show(els.empty); }
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+/* ---------- Render ---------- */
+function anamRenderizar() {
+  const etapa = ETAPAS[anamEtapa];
+  const corpo = $("#anamCorpo");
+
+  // Trilha
+  $("#anamTrilha").innerHTML = ETAPAS.map((e, i) => `
+    <li class="anam-passo ${i === anamEtapa ? "is-atual" : ""} ${i < anamEtapa ? "is-feito" : ""}">
+      <button type="button" data-ir="${i}">
+        <span class="anam-passo__n">${i + 1}</span>
+        <span class="anam-passo__t">${escapeHTML(e.titulo)}</span>
+      </button>
+    </li>`).join("");
+  $$("#anamTrilha [data-ir]").forEach(b =>
+    b.addEventListener("click", () => { anamEtapa = Number(b.dataset.ir); anamRenderizar(); }));
+
+  let html = `<h3 class="anam__h">${escapeHTML(etapa.titulo)}</h3>`;
+  if (etapa.aviso) html += `<p class="anam__dica">${etapa.aviso}</p>`;
+
+  if (etapa.isda) html += anamHTMLisda();
+  else if (etapa.resultado) html += anamHTMLresultado();
+  else html += `<div class="anam__campos">${etapa.campos.map(anamHTMLcampo).join("")}</div>`;
+
+  corpo.innerHTML = html;
+  anamLigarEventos(etapa);
+
+  $("#anamAnterior").disabled = anamEtapa === 0;
+  $("#anamProximo").textContent = anamEtapa === ETAPAS.length - 2 ? "Gerar texto" : "Próximo";
+  $("#anamProximo").hidden = etapa.resultado === true;
+}
+
+function anamHTMLcampo(c) {
+  // Campos que só fazem sentido em função de outra resposta
+  if (c.depende) {
+    const atual = anamDados[c.depende.campo];
+    if (!c.depende.valores.includes(atual)) return "";
+  }
+  const v = anamDados[c.id];
+  const dica = c.dica ? `<span class="anam-campo__dica">${escapeHTML(c.dica)}</span>` : "";
+  const cls = `anam-campo ${c.curto ? "anam-campo--curto" : ""}`;
+
+  if (c.tipo === "opcoes") {
+    return `<div class="${cls}">
+      <label class="anam-campo__rot">${escapeHTML(c.rotulo)}</label>${dica}
+      <div class="anam-opcoes" role="group" aria-label="${escapeHTML(c.rotulo)}">
+        ${c.opcoes.map(o => `<button type="button" class="anam-opcao ${v === o ? "is-on" : ""}"
+            data-campo="${c.id}" data-valor="${escapeHTML(o)}" aria-pressed="${v === o}">${escapeHTML(o)}</button>`).join("")}
+      </div></div>`;
+  }
+  if (c.tipo === "chips") {
+    const sel = Array.isArray(v) ? v : [];
+    return `<div class="anam-campo">
+      <label class="anam-campo__rot">${escapeHTML(c.rotulo)}</label>${dica}
+      <div class="anam-chips" role="group" aria-label="${escapeHTML(c.rotulo)}">
+        ${c.itens.map(i => `<button type="button" class="anam-chip ${sel.includes(i) ? "is-on" : ""}"
+            data-lista="${c.id}" data-item="${escapeHTML(i)}" aria-pressed="${sel.includes(i)}">${escapeHTML(i)}</button>`).join("")}
+      </div></div>`;
+  }
+  if (c.tipo === "area") {
+    return `<div class="anam-campo anam-campo--largo">
+      <label class="anam-campo__rot" for="anam-${c.id}">${escapeHTML(c.rotulo)}</label>${dica}
+      <textarea class="anam-input anam-input--area" id="anam-${c.id}" data-campo="${c.id}"
+        rows="${c.linhas || 3}">${escapeHTML(v || "")}</textarea></div>`;
+  }
+  const tipo = c.tipo === "numero" ? "number" : "text";
+  const extra = c.tipo === "numero" ? `min="${c.min ?? 0}" max="${c.max ?? 999}" inputmode="numeric"` : "";
+  return `<div class="${cls}">
+    <label class="anam-campo__rot" for="anam-${c.id}">${escapeHTML(c.rotulo)}</label>${dica}
+    <div class="anam-input__wrap">
+      <input class="anam-input" id="anam-${c.id}" type="${tipo}" ${extra}
+        data-campo="${c.id}" value="${escapeHTML(v ?? "")}" />
+      ${c.sufixo ? `<span class="anam-input__sufixo">${escapeHTML(c.sufixo)}</span>` : ""}
+    </div></div>`;
+}
+
+function anamHTMLisda() {
+  return `<div class="anam-isda">${ISDA.map(g => `
+    <section class="anam-sis">
+      <div class="anam-sis__head">
+        <h4>${escapeHTML(g.sistema)}</h4>
+        <button type="button" class="anam-sis__negar" data-negar="${escapeHTML(g.sistema)}">Negar todos</button>
+      </div>
+      <div class="anam-chips">
+        ${g.sintomas.map(s => {
+          const est = anamDados.isda[`${g.sistema}::${s}`] || "";
+          return `<button type="button" class="anam-chip anam-chip--tri ${est ? "is-" + est : ""}"
+            data-sis="${escapeHTML(g.sistema)}" data-sint="${escapeHTML(s)}"
+            aria-label="${escapeHTML(s)}: ${est || "não abordado"}">${escapeHTML(s)}</button>`;
+        }).join("")}
+      </div>
+    </section>`).join("")}</div>`;
+}
+
+function anamHTMLresultado() {
+  return `
+    <div class="anam-res__acoes">
+      <button class="btn btn--primary anam-res__btn" id="anamCopiar" type="button">Copiar texto</button>
+      <button class="anam-res__btn anam-res__btn--sec" id="anamRefinar" type="button">Organizar história com IA</button>
+      <button class="anam-res__btn anam-res__btn--sec" id="anamBaixar" type="button">Baixar .txt</button>
+    </div>
+    <p class="anam__dica" id="anamRefinoDica">
+      A IA reescreve só a história da doença atual em linguagem clínica. Ela não inventa
+      sintoma nem sugere diagnóstico — e o resto do texto já está pronto sem ela.
+    </p>
+    <textarea class="anam-res__texto" id="anamTexto" rows="22" spellcheck="false"></textarea>
+    <p class="anam__aviso anam__aviso--res">
+      Revise antes de usar. Texto de apoio ao estudo, não substitui registro em prontuário
+      feito por profissional responsável.
+    </p>`;
+}
+
+/* ---------- Eventos ---------- */
+function anamLigarEventos(etapa) {
+  const corpo = $("#anamCorpo");
+
+  $$(".anam-opcao", corpo).forEach(b => b.addEventListener("click", () => {
+    const atual = anamDados[b.dataset.campo];
+    anamDados[b.dataset.campo] = atual === b.dataset.valor ? "" : b.dataset.valor;
+    anamSalvar();
+    anamRenderizar();   // pode revelar ou esconder campos dependentes
+  }));
+
+  $$(".anam-chip[data-lista]", corpo).forEach(b => b.addEventListener("click", () => {
+    const lista = Array.isArray(anamDados[b.dataset.lista]) ? anamDados[b.dataset.lista] : [];
+    const item = b.dataset.item;
+    anamDados[b.dataset.lista] = lista.includes(item) ? lista.filter(x => x !== item) : [...lista, item];
+    b.classList.toggle("is-on");
+    b.setAttribute("aria-pressed", b.classList.contains("is-on"));
+    anamSalvar();
+  }));
+
+  // Três estados num clique só: neutro → refere → nega → neutro
+  $$(".anam-chip--tri", corpo).forEach(b => b.addEventListener("click", () => {
+    const chave = `${b.dataset.sis}::${b.dataset.sint}`;
+    const atual = anamDados.isda[chave] || "";
+    const proximo = atual === "" ? "refere" : atual === "refere" ? "nega" : "";
+    if (proximo) anamDados.isda[chave] = proximo; else delete anamDados.isda[chave];
+    b.classList.remove("is-refere", "is-nega");
+    if (proximo) b.classList.add("is-" + proximo);
+    b.setAttribute("aria-label", `${b.dataset.sint}: ${proximo || "não abordado"}`);
+    anamSalvar();
+  }));
+
+  $$("[data-negar]", corpo).forEach(b => b.addEventListener("click", () => {
+    const sis = b.dataset.negar;
+    const grupo = ISDA.find(g => g.sistema === sis);
+    // Só marca o que ainda não foi tocado: não desfaz um "refere" já registrado
+    grupo.sintomas.forEach(s => {
+      const chave = `${sis}::${s}`;
+      if (!anamDados.isda[chave]) anamDados.isda[chave] = "nega";
+    });
+    anamSalvar();
+    anamRenderizar();
+  }));
+
+  $$("[data-campo]", corpo).filter(el => el.tagName === "INPUT" || el.tagName === "TEXTAREA")
+    .forEach(el => el.addEventListener("input", () => {
+      anamDados[el.dataset.campo] = el.value;
+      anamSalvar();
+    }));
+
+  if (etapa.resultado) {
+    const area = $("#anamTexto");
+    area.value = montarAnamnese();
+    $("#anamCopiar").addEventListener("click", async () => {
+      toast(await copyToClipboard(area.value) ? "Anamnese copiada." : "Não foi possível copiar.");
+    });
+    $("#anamRefinar").addEventListener("click", refinarHistoria);
+    $("#anamBaixar").addEventListener("click", baixarAnamnese);
+  }
+}
+
+/* ---------- Montagem do texto ----------
+   Tudo aqui é modelo puro: mesma entrada, mesma saída, sem IA no meio. */
+
+/* "a, b e c" — como se escreve, não "a, b, c" */
+function listar(itens) {
+  const l = (itens || []).filter(Boolean).map(String);
+  if (!l.length) return "";
+  if (l.length === 1) return l[0];
+  return `${l.slice(0, -1).join(", ")} e ${l[l.length - 1]}`;
+}
+
+const minuscula = s => s ? s.charAt(0).toLowerCase() + s.slice(1) : s;
+const maiuscula = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+
+/* Resolve as formas "Casado(a)" / "Sedentário(a)" pelo sexo informado. Deixar
+   o "(a)" no texto final denuncia formulário; errar a concordância, também. */
+function concordar(texto) {
+  const fem = v("sexo") === "Feminino";
+  return String(texto || "")
+    .replace(/o\(a\)/g, fem ? "a" : "o")
+    .replace(/\bSedentário\b/g, fem ? "Sedentária" : "Sedentário");
+}
+
+/* Baixa a inicial de cada item da lista, mas preserva siglas: "Hipertensão
+   arterial" vira "hipertensão arterial", enquanto "HIV" e "DPOC" ficam como
+   estão. Duas maiúsculas seguidas no começo = sigla. */
+const minusculaItem = s => (s && !/^[A-ZÀ-Ú]{2}/.test(s)) ? minuscula(s) : s;
+const listarMinusculo = itens => listar((itens || []).filter(Boolean).map(minusculaItem));
+const v = id => (anamDados[id] || "").toString().trim();
+const vLista = id => Array.isArray(anamDados[id]) ? anamDados[id] : [];
+
+function blocoIdentificacao() {
+  const partes = [];
+  if (v("iniciais")) partes.push(v("iniciais"));
+  if (v("idade")) partes.push(`${v("idade")} anos`);
+  if (v("sexo")) partes.push(`sexo ${v("sexo").toLowerCase()}`);
+  if (v("estadoCivil")) partes.push(concordar(minuscula(v("estadoCivil"))));
+  if (v("profissao")) partes.push(minuscula(v("profissao")));
+  if (v("procedencia")) partes.push(`natural e procedente de ${v("procedencia")}`);
+  return partes.length ? partes.join(", ") + "." : "";
+}
+
+function blocoQueixa() {
+  const q = v("queixa");
+  if (!q) return "";
+  const d = v("duracao");
+  return `"${q}"${d ? ` há ${d}` : ""}.`;
+}
+
+function blocoISDA() {
+  const linhas = [];
+  for (const g of ISDA) {
+    const refere = [], nega = [];
+    for (const s of g.sintomas) {
+      const est = anamDados.isda[`${g.sistema}::${s}`];
+      if (est === "refere") refere.push(minusculaItem(s));
+      else if (est === "nega") nega.push(minusculaItem(s));
+    }
+    if (!refere.length && !nega.length) continue;   // sistema não abordado fica fora
+    const trechos = [];
+    if (refere.length) trechos.push(`refere ${listar(refere)}`);
+    if (nega.length) trechos.push(`nega ${listar(nega)}`);
+    linhas.push(`${g.sistema}: ${trechos.join("; ")}.`);
+  }
+  return linhas.join("\n");
+}
+
+function blocoAntecedentes() {
+  const linhas = [];
+  const comorb = [...vLista("comorbidades"), v("comorbidadesOutras")].filter(Boolean);
+  linhas.push(comorb.length
+    ? `Comorbidades: ${listarMinusculo(comorb)}.`
+    : "Nega comorbidades prévias.");
+
+  if (v("cirurgias")) linhas.push(`Cirurgias prévias: ${minuscula(v("cirurgias"))}.`);
+  else linhas.push("Nega cirurgias prévias.");
+
+  const alerg = [...vLista("alergias"), v("alergiasOutras")].filter(Boolean);
+  linhas.push(alerg.length
+    ? `Alergias: ${listarMinusculo(alerg)}.`
+    : "Nega alergias conhecidas.");
+
+  if (v("medicacoes")) linhas.push(`Medicações em uso: ${v("medicacoes").replace(/\n+/g, "; ")}.`);
+  else linhas.push("Nega uso de medicações contínuas.");
+
+  if (v("internacoes")) linhas.push(`Internações prévias: ${minuscula(v("internacoes"))}.`);
+  return linhas.join("\n");
+}
+
+function blocoHabitos() {
+  const partes = [];
+
+  const tab = v("tabagismo");
+  if (tab === "Nega") partes.push("Nega tabagismo.");
+  else if (tab) {
+    const cig = Number(v("cigarrosDia")), anos = Number(v("anosFumo"));
+    let t = tab === "Ex-tabagista" ? "Ex-tabagista" : "Tabagista atual";
+    if (cig > 0 && anos > 0) {
+      // Carga tabágica: a conta que sempre se esquece de fazer na hora
+      const macosAno = Math.round((cig / 20) * anos * 10) / 10;
+      t += `, ${cig} cigarros/dia por ${anos} anos (${macosAno} maços-ano)`;
+    } else if (cig > 0) t += `, ${cig} cigarros/dia`;
+    partes.push(t + ".");
+  }
+
+  const eti = v("etilismo");
+  if (eti === "Nega") partes.push("Nega etilismo.");
+  else if (eti) partes.push(`Etilismo ${minuscula(eti)}${v("etilismoDetalhe") ? ` (${v("etilismoDetalhe")})` : ""}.`);
+
+  const dro = v("drogas");
+  if (dro === "Nega") partes.push("Nega uso de drogas ilícitas.");
+  else if (dro === "Sim") partes.push(`Refere uso de drogas ilícitas${v("drogasDetalhe") ? `: ${v("drogasDetalhe")}` : ""}.`);
+
+  if (v("atividade")) partes.push(v("atividade") === "Sedentário" ? concordar("Sedentário.") : `Atividade física ${minuscula(v("atividade"))}.`);
+  if (v("sono")) partes.push(`Sono ${minuscula(v("sono"))}.`);
+  if (v("alimentacao")) partes.push(`Alimentação: ${minuscula(v("alimentacao"))}.`);
+  return partes.join(" ");
+}
+
+function blocoFamiliares() {
+  const f = vLista("familiares");
+  const partes = [];
+  if (f.length) partes.push(`Refere ${listarMinusculo(f)} na família.`);
+  else partes.push("Nega antecedentes familiares relevantes.");
+  if (v("familiaresDetalhe")) partes.push(maiuscula(v("familiaresDetalhe")) + ".");
+  return partes.join(" ");
+}
+
+function montarAnamnese() {
+  // Linha em branco entre seções: o texto é feito para ser colado e lido,
+  // e sem o respiro os blocos se confundem.
+  const secao = (titulo, corpo) => corpo && corpo.trim()
+    ? `${titulo}\n${corpo.trim()}\n\n` : "";
+
+  let t = "";
+  t += secao("IDENTIFICAÇÃO", blocoIdentificacao());
+  t += secao("QUEIXA PRINCIPAL", blocoQueixa());
+  t += secao("HISTÓRIA DA DOENÇA ATUAL", v("hdaRefinada") || v("hda"));
+  t += secao("INTERROGATÓRIO SINTOMATOLÓGICO", blocoISDA());
+  t += secao("ANTECEDENTES PESSOAIS", blocoAntecedentes());
+  t += secao("HÁBITOS DE VIDA", blocoHabitos());
+  t += secao("ANTECEDENTES FAMILIARES", blocoFamiliares());
+  return t.trim();
+}
+
+/* ---------- Refino da história pela IA ----------
+   Único ponto em que algo sai deste navegador. Só a queixa e a história
+   vão — identificação, antecedentes e hábitos ficam sempre aqui. */
+async function refinarHistoria() {
+  const btn = $("#anamRefinar");
+  const hda = v("hda");
+  if (!hda) { toast("Escreva a história da doença atual primeiro."); return; }
+
+  const rotulo = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Organizando…";
+
+  try {
+    const dados = await postProxy({
+      modo: "anamnese",
+      termo: v("queixa") || "queixa não informada",
+      hda,
+      duracao: v("duracao"),
+      idade: v("idade"),
+      sexo: v("sexo"),
+    });
+    const texto = String(dados.hda || "").trim();
+    if (!texto) throw errWithCode("vazio", "VAZIO");
+
+    anamDados.hdaRefinada = texto;
+    if (dados.queixa) anamDados.queixaRefinada = String(dados.queixa).trim();
+    anamSalvar();
+    $("#anamTexto").value = montarAnamnese();
+    toast("História reorganizada. Confira antes de usar.");
+    btn.textContent = "Refazer com IA";
+  } catch (e) {
+    toast("Não consegui organizar agora. O texto continua completo sem isso.");
+    btn.textContent = rotulo;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function baixarAnamnese() {
+  const texto = $("#anamTexto").value;
+  const nome = `anamnese-${v("iniciais") || "paciente"}-${new Date().toISOString().slice(0, 10)}.txt`
+    .replace(/[^\w.-]/g, "-");
+  const url = URL.createObjectURL(new Blob([texto], { type: "text/plain;charset=utf-8" }));
+  const a = document.createElement("a");
+  a.href = url; a.download = nome;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  toast("Arquivo baixado.");
+}
+
+function limparAnamnese() {
+  if (!confirm("Apagar todas as respostas desta anamnese?")) return;
+  anamDados = anamPadrao();
+  anamSalvar();
+  anamEtapa = 0;
+  anamRenderizar();
+  toast("Anamnese limpa.");
+}
+
+function ligarEventosAnamnese() {
+  $("#btnAnamnese")?.addEventListener("click", abrirAnamnese);
+  $("#anamVoltarInicio")?.addEventListener("click", fecharAnamnese);
+  $("#anamLimpar")?.addEventListener("click", limparAnamnese);
+  $("#anamAnterior")?.addEventListener("click", () => {
+    if (anamEtapa > 0) { anamEtapa--; anamRenderizar(); window.scrollTo({ top: 0, behavior: "smooth" }); }
+  });
+  $("#anamProximo")?.addEventListener("click", () => {
+    if (anamEtapa < ETAPAS.length - 1) { anamEtapa++; anamRenderizar(); window.scrollTo({ top: 0, behavior: "smooth" }); }
+  });
+}
+
+/* =================================================================
+   17) INICIALIZAÇÃO
    ================================================================= */
 document.addEventListener("DOMContentLoaded", () => {
   initTheme();
   initVoice();
   bindGlobalEvents();
+  ligarEventosAnamnese();
 });

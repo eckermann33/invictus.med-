@@ -838,8 +838,13 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 0 clamp(16px, 4vw, 40px)
   .toc { display: none; }
   .empty__grid { grid-template-columns: 1fr; }
 }
-@media (max-width: 680px) {
+/* Cinco botões com rótulo não cabem a partir de ~880px — some com o texto
+   antes disso, senão a barra estoura a largura da tela. */
+@media (max-width: 880px) {
   .icon-btn__label { display: none; }
+}
+
+@media (max-width: 680px) {
   .search { flex-direction: column; }
   .search__submit { width: 100%; }
   .kv-grid, .variations { grid-template-columns: 1fr; }
@@ -911,4 +916,179 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 0 clamp(16px, 4vw, 40px)
   .alert-box { background: #fff !important; border: 1.5px solid #c00 !important; }
   .card p, .bullets li, .kv__v, .vcard p { color: #111 !important; }
   .cid, .tag, .kv, .vcard, .diff { background: #f4f4f4 !important; }
+}
+
+/* =================================================================
+   ANAMNESE ESTRUTURADA
+   -----------------------------------------------------------------
+   Tudo em cima dos tokens do tema: assim a aba acompanha qualquer
+   mudança de estilo sem precisar ser retocada.
+   ================================================================= */
+.anam { max-width: 880px; margin: 0 auto; padding: 8px 0 60px; animation: rise 0.4s var(--ease); }
+
+.anam__head { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 22px; }
+.anam__titulo { font-size: 1.5rem; flex: 1; min-width: 0; }
+.anam__limpar {
+  background: none; border: none; padding: 6px 10px;
+  color: var(--text-mut); font-size: 0.84rem; border-radius: var(--r-sm);
+  transition: color 0.2s var(--ease);
+}
+.anam__limpar:hover { color: var(--red); }
+
+/* Trilha de etapas */
+.anam__trilha {
+  display: flex; gap: 6px; overflow-x: auto; list-style: none;
+  margin: 0 0 26px; padding: 0 0 6px;
+  scrollbar-width: thin;
+}
+.anam-passo button {
+  display: flex; align-items: center; gap: 8px; white-space: nowrap;
+  padding: 8px 13px; border-radius: var(--r-sm);
+  background: transparent; border: 1px solid var(--hairline);
+  color: var(--text-mut); font-size: 0.84rem;
+  transition: color 0.2s var(--ease), border-color 0.2s var(--ease), background 0.2s var(--ease);
+}
+.anam-passo button:hover { color: var(--text); }
+.anam-passo__n {
+  display: grid; place-items: center; width: 20px; height: 20px; flex-shrink: 0;
+  border-radius: 50%; font-size: 0.72rem; font-weight: 600;
+  background: var(--hairline); color: var(--text-mut);
+}
+.anam-passo.is-atual button { color: var(--text); border-color: color-mix(in srgb, var(--blue) 50%, transparent); }
+.anam-passo.is-atual .anam-passo__n { background: var(--blue); color: #fff; }
+.anam-passo.is-feito .anam-passo__n { background: color-mix(in srgb, var(--blue) 25%, transparent); color: var(--blue-bright); }
+
+.anam__corpo {
+  padding: 26px; border-radius: var(--r-lg);
+  background: var(--panel); border: 1px solid var(--hairline);
+}
+.anam__h { font-size: 1.2rem; margin-bottom: 6px; }
+.anam__dica { color: var(--text-mut); font-size: 0.9rem; line-height: 1.55; margin-bottom: 20px; }
+.anam__dica b { color: var(--text-soft); }
+
+/* Campos */
+.anam__campos { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+.anam-campo { display: flex; flex-direction: column; grid-column: span 2; }
+.anam-campo--curto { grid-column: span 1; }
+.anam-campo--largo { grid-column: span 2; }
+.anam-campo__rot { font-size: 0.88rem; font-weight: 600; color: var(--text-soft); margin-bottom: 5px; }
+.anam-campo__dica { font-size: 0.8rem; color: var(--text-mut); margin-bottom: 8px; }
+
+.anam-input__wrap { position: relative; display: flex; align-items: center; }
+.anam-input {
+  width: 100%; padding: 11px 14px;
+  border-radius: var(--r-sm);
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--glass-brd);
+  font-family: var(--font-body); font-size: 0.96rem;
+  transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease);
+}
+.anam-input:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--blue) 55%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 15%, transparent);
+}
+.anam-input--area { resize: vertical; line-height: 1.6; }
+.anam-input__sufixo { position: absolute; right: 14px; color: var(--text-mut); font-size: 0.86rem; pointer-events: none; }
+
+/* Escolha única */
+.anam-opcoes { display: flex; flex-wrap: wrap; gap: 7px; }
+.anam-opcao {
+  padding: 9px 16px; border-radius: 999px;
+  background: transparent; border: 1px solid var(--glass-brd);
+  color: var(--text-soft); font-size: 0.88rem;
+  transition: color 0.18s var(--ease), border-color 0.18s var(--ease), background 0.18s var(--ease);
+}
+.anam-opcao:hover { color: var(--text); }
+.anam-opcao.is-on {
+  background: color-mix(in srgb, var(--blue) 16%, transparent);
+  border-color: color-mix(in srgb, var(--blue) 55%, transparent);
+  color: var(--blue-bright);
+}
+
+/* Múltipla escolha e interrogatório */
+.anam-chips { display: flex; flex-wrap: wrap; gap: 7px; }
+.anam-chip {
+  padding: 8px 14px; border-radius: 999px;
+  background: transparent; border: 1px solid var(--glass-brd);
+  color: var(--text-soft); font-size: 0.86rem;
+  transition: color 0.18s var(--ease), border-color 0.18s var(--ease), background 0.18s var(--ease);
+}
+.anam-chip:hover { color: var(--text); }
+.anam-chip.is-on {
+  background: color-mix(in srgb, var(--blue) 16%, transparent);
+  border-color: color-mix(in srgb, var(--blue) 55%, transparent);
+  color: var(--blue-bright);
+}
+/* Três estados: neutro, refere (verde), nega (riscado) */
+.anam-chip--tri.is-refere {
+  background: color-mix(in srgb, var(--blue) 16%, transparent);
+  border-color: color-mix(in srgb, var(--blue) 55%, transparent);
+  color: var(--blue-bright);
+}
+.anam-chip--tri.is-nega {
+  border-color: color-mix(in srgb, var(--red) 32%, transparent);
+  color: var(--text-mut);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--red) 70%, transparent);
+}
+
+.anam-isda { display: flex; flex-direction: column; gap: 24px; }
+.anam-sis__head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 10px; }
+.anam-sis__head h4 { font-size: 0.98rem; color: var(--text); }
+.anam-sis__negar {
+  background: none; border: none; padding: 0;
+  color: var(--text-mut); font-size: 0.78rem; text-decoration: underline;
+  transition: color 0.2s var(--ease);
+}
+.anam-sis__negar:hover { color: var(--red); }
+
+/* Navegação entre etapas */
+.anam__nav { display: flex; justify-content: space-between; gap: 12px; margin-top: 22px; }
+.anam__btn {
+  padding: 0 24px; height: 46px; border-radius: var(--r-sm);
+  background: transparent; border: 1px solid var(--glass-brd);
+  color: var(--text-soft); font-family: var(--font-display); font-weight: 600; font-size: 0.92rem;
+  transition: color 0.2s var(--ease), border-color 0.2s var(--ease);
+}
+.anam__btn:hover:not(:disabled) { color: var(--text); }
+.anam__btn:disabled { opacity: 0.4; cursor: default; }
+.anam__btn--frente { margin-left: auto; border: none; }
+
+/* Resultado */
+.anam-res__acoes { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+.anam-res__btn { height: 46px; padding: 0 22px; border-radius: var(--r-sm); font-size: 0.92rem; }
+.anam-res__btn--sec {
+  background: transparent; border: 1px solid var(--glass-brd);
+  color: var(--text-soft); font-family: var(--font-display); font-weight: 600;
+  transition: color 0.2s var(--ease), border-color 0.2s var(--ease);
+}
+.anam-res__btn--sec:hover:not(:disabled) { color: var(--text); border-color: color-mix(in srgb, var(--blue) 45%, transparent); }
+.anam-res__btn--sec:disabled { opacity: 0.5; cursor: progress; }
+.anam-res__texto {
+  width: 100%; padding: 20px;
+  border-radius: var(--r); resize: vertical;
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--glass-brd);
+  font-family: var(--font-mono); font-size: 0.86rem; line-height: 1.7;
+  white-space: pre-wrap;
+}
+.anam-res__texto:focus { outline: none; border-color: color-mix(in srgb, var(--blue) 55%, transparent); }
+
+.anam__aviso {
+  margin-top: 18px; padding: 14px 16px; border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--amber) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--amber) 28%, transparent);
+  color: var(--text-soft); font-size: 0.86rem; line-height: 1.6;
+}
+.anam__aviso b { color: var(--text); }
+.anam__aviso--res { margin-top: 14px; }
+
+@media (max-width: 680px) {
+  .anam__titulo { font-size: 1.25rem; }
+  .anam__limpar { padding-inline: 0; }
+  .anam__campos { grid-template-columns: 1fr; }
+  .anam-campo, .anam-campo--curto, .anam-campo--largo { grid-column: span 1; }
+  .anam__corpo { padding: 20px 16px; }
+  .anam-res__acoes .anam-res__btn { flex: 1 1 100%; }
 }

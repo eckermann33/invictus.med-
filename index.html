@@ -39,7 +39,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet" />
 
-  <link rel="stylesheet" href="style.css?v=13" />
+  <link rel="stylesheet" href="style.css?v=14" />
 </head>
 <body>
 
@@ -71,6 +71,10 @@
       <button class="icon-btn" id="btnFavorites" type="button" aria-label="Abrir favoritos">
         <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 17.3 6.2 20.5l1.1-6.5L2.6 9.4l6.5-.9L12 2.6l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
         <span class="icon-btn__label">Favoritos</span>
+      </button>
+      <button class="icon-btn" id="btnAnamnese" type="button" aria-label="Montar uma anamnese estruturada">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M8 4h8a1 1 0 0 1 1 1v1h2a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h2V5a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 12h6M9 16h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <span class="icon-btn__label">Anamnese</span>
       </button>
       <button class="icon-btn" id="btnTheme" type="button" aria-label="Alternar tema claro/escuro">
         <svg class="icon-sun" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2v2.5M12 19.5V22M4.2 4.2l1.8 1.8M18 18l1.8 1.8M2 12h2.5M19.5 12H22M4.2 19.8 6 18M18 6l1.8-1.8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
@@ -187,6 +191,34 @@
       <div class="study__out" id="studyOut"></div>
     </section>
 
+    <!-- ===================== ANAMNESE ESTRUTURADA ===================== -->
+    <section class="anam" id="anamneseView" hidden>
+      <div class="anam__head">
+        <button class="study__back" id="anamVoltarInicio" type="button">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Voltar
+        </button>
+        <h2 class="anam__titulo">Anamnese</h2>
+        <button class="anam__limpar" id="anamLimpar" type="button">Limpar tudo</button>
+      </div>
+
+      <!-- Trilha de etapas -->
+      <ol class="anam__trilha" id="anamTrilha" aria-label="Etapas da anamnese"></ol>
+
+      <!-- Conteúdo da etapa atual (montado pelo JavaScript) -->
+      <div class="anam__corpo" id="anamCorpo"></div>
+
+      <div class="anam__nav">
+        <button class="anam__btn" id="anamAnterior" type="button">Anterior</button>
+        <button class="btn btn--primary anam__btn anam__btn--frente" id="anamProximo" type="button">Próximo</button>
+      </div>
+
+      <p class="anam__aviso">
+        <b>Não identifique o paciente.</b> Use iniciais, nunca nome completo, CPF ou número de
+        prontuário. O rascunho fica salvo só neste navegador — use "Limpar tudo" ao terminar.
+      </p>
+    </section>
+
     <!-- ===================== ESTADO INICIAL / VAZIO ===================== -->
     <section class="empty" id="empty">
       <div class="empty__grid">
@@ -258,6 +290,6 @@
        Sobre travar a versão com SRI (integrity), veja o README. -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"
           crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
-  <script src="script.js?v=13" defer></script>
+  <script src="script.js?v=14" defer></script>
 </body>
 </html>
