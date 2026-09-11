@@ -44,6 +44,34 @@ Tem também um **estudo de caso**: um paciente fictício com história, exame f�
 exames e uma pergunta de raciocínio no fim, sem a resposta. Bom para testar se
 você realmente entendeu a condição, e não só decorou a lista.
 
+## A aba de anamnese
+
+Uma segunda ferramenta, separada da busca: um roteiro que monta uma anamnese
+estruturada quase só com cliques.
+
+Identificação, interrogatório sintomatológico, antecedentes, hábitos e história
+familiar são todos por clique — no interrogatório, cada sintoma tem três
+estados (não abordado, refere, nega), e um botão "negar todos" preenche o
+aparelho inteiro de uma vez, sem desfazer o que você já marcou. Digitar mesmo,
+só na queixa principal e na história da doença atual, que é o que não cabe em
+botão.
+
+O texto final é montado por modelo: mesma entrada, mesma saída, sem IA no meio.
+Ele calcula a carga tabágica em maços-ano, resolve a concordância de gênero e
+lista as coisas como se escreve ("hipertensão arterial e diabetes mellitus",
+não "hipertensão arterial, diabetes mellitus"). Dá para copiar ou baixar em
+`.txt`.
+
+A IA entra em um ponto só, e opcional: reescrever a história que você digitou
+solta em prosa clínica. O prompt proíbe acrescentar sintoma, inventar data ou
+sugerir diagnóstico — mas revise mesmo assim.
+
+Sobre privacidade, a aba foi feita com cuidado: não existe campo de nome
+completo, CPF ou prontuário, só iniciais. Apenas a queixa e a história saem do
+navegador quando você pede o refino — identificação, antecedentes e hábitos
+nunca são enviados. O rascunho fica salvo só no seu navegador, e tem um botão
+para apagar tudo.
+
 ## Os detalhes pequenos
 
 Histórico e favoritos ficam salvos no seu navegador. Busca por voz, se o navegador

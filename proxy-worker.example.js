@@ -98,6 +98,15 @@ export default {
         return json({ erro: "Falha no estudo.", codigo: `${modo.toUpperCase()}:${r.codigo}` }, 503, cors);
       }
 
+      /* ---- Anamnese: reorganiza a história escrita pelo usuário ---- */
+      if (modo === "anamnese") {
+        const key = env.LLM_KEY || env.LLM_KEY_2;
+        if (!key) return json({ erro: "Sem chave.", codigo: "ANAMNESE:sem-chave" }, 503, cors);
+        const r = await chamar(CASE, url, key, promptAnamnese(termo, body), MAX_TOKENS.padrao);
+        if (r.ok) return json(r.dados, 200, cors);
+        return json({ erro: "Falha ao organizar.", codigo: `ANAMNESE:${r.codigo}` }, 503, cors);
+      }
+
       /* ---- Estudo de caso e referências em ABNT ---- */
       if (modo === "caso" || modo === "abnt") {
         const key = env.LLM_KEY || env.LLM_KEY_2;
@@ -246,6 +255,43 @@ Regras:
 - Cada item completo (autor, título, edição, local, editora ou periódico, ano).
 - Se faltar um dado, complete com a melhor informação real conhecida; NÃO invente autores ou obras.
 - Ordene alfabeticamente. Entre 3 e 6 referências, priorizando diretrizes e livros-texto.`;
+}
+
+/* A regra mais importante deste arquivo: numa anamnese, um sintoma inventado
+   vira dado clínico falso. O prompt é escrito para tornar isso difícil, e o
+   site ainda avisa que o texto precisa ser revisado. */
+function promptAnamnese(queixa, corpo) {
+  const ctx = [
+    corpo.idade ? `${corpo.idade} anos` : "",
+    corpo.sexo ? `sexo ${String(corpo.sexo).toLowerCase()}` : "",
+    corpo.duracao ? `evolução de ${corpo.duracao}` : "",
+  ].filter(Boolean).join(", ");
+
+  return `Você é um preceptor revisando a redação de uma história da doença atual escrita por um estudante de medicina.
+
+Queixa principal relatada: "${queixa}"
+${ctx ? `Contexto: ${ctx}` : ""}
+
+Texto escrito pelo estudante (informal, possivelmente desorganizado):
+"""
+${String(corpo.hda || "").slice(0, 4000)}
+"""
+
+Sua tarefa é REESCREVER esse texto em linguagem clínica, em português do Brasil, na ordem
+cronológica dos fatos, em prosa corrida e terceira pessoa.
+
+${REGRA_JSON}
+Formato: { "queixa": "queixa principal enxuta, nas palavras do paciente", "hda": "texto reescrito" }
+
+REGRAS ABSOLUTAS — o texto vira registro clínico, e informação inventada é erro grave:
+- NÃO acrescente nenhum sintoma, sinal, exame, medicação ou dado que não esteja no texto acima.
+- NÃO invente datas, valores, doses ou intensidades que não foram escritas.
+- NÃO sugira diagnóstico, hipótese diagnóstica ou conduta.
+- NÃO preencha lacunas com o que "costuma acontecer" nesse quadro.
+- Se uma informação estiver ambígua, mantenha a ambiguidade em vez de resolver por conta própria.
+- Pode: organizar a ordem dos fatos, trocar termo leigo pelo equivalente técnico quando for
+  inequívoco (ex.: "dor no peito" → "dor torácica"), ligar as frases e remover repetição.
+- Mantenha entre 1 e 3 parágrafos. Não use listas nem marcadores.`;
 }
 
 function promptFicha(termo) {
