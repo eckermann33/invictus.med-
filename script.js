@@ -744,7 +744,7 @@ function buildSections(d) {
   /* Referências */
   if (has(d.referencias)) S.push({ id: "referencias", label: "Referências", html: `
     <div class="card__head"><span class="card__ico">${ICON.refs}</span><h2 class="card__title">Referências</h2></div>
-    <button class="abnt-btn" id="btnAbnt" type="button">📑 Copiar referências em ABNT</button>
+    <button class="abnt-btn" id="btnAbnt" type="button">Copiar referências em ABNT</button>
     <p class="abnt-hint">As referências usadas são formatadas em ABNT e copiadas para colar no seu trabalho.</p>` });
 
   return S;
@@ -791,7 +791,7 @@ function buildDrugSections(d) {
 
   if (has(d.referencias)) S.push({ id: "referencias", label: "Referências", html: `
     <div class="card__head"><span class="card__ico">${ICON.refs}</span><h2 class="card__title">Referências</h2></div>
-    <button class="abnt-btn" id="btnAbnt" type="button">📑 Copiar referências em ABNT</button>
+    <button class="abnt-btn" id="btnAbnt" type="button">Copiar referências em ABNT</button>
     <p class="abnt-hint">As referências usadas são formatadas em ABNT e copiadas para colar no seu trabalho.</p>` });
 
   return S;
@@ -822,7 +822,7 @@ function renderResult(d) {
       </button>
       <button class="btn-study" id="btnStudy" type="button">
         <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 5h7a3 3 0 0 1 3 3v11a2.5 2.5 0 0 0-2.5-2.5H4zM20 5h-7a3 3 0 0 0-3 3v11a2.5 2.5 0 0 1 2.5-2.5H20z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
-        📚 Estudar isto
+        Estudar isto
       </button>
     </div>
     <section class="fiche-head" id="identificacao">
@@ -849,7 +849,7 @@ function renderResult(d) {
     <section class="card case-card" id="estudoCaso">
       <div class="card__head"><span class="card__ico">${ICON.refs}</span><h2 class="card__title">Estudo de caso</h2></div>
       <p class="case-card__intro">Gere um caso clínico didático baseado em <b>${escapeHTML(d.nome || "")}</b> para treinar o raciocínio.</p>
-      <button class="case-btn" id="btnCase" type="button">📋 Gerar estudo de caso</button>
+      <button class="case-btn" id="btnCase" type="button">Gerar estudo de caso</button>
       <div id="caseOut" class="case-out"></div>
     </section>`;
 
@@ -992,7 +992,7 @@ function buildStudyHTML(d) {
   return `<div id="pdfDoc" style="width:720px;padding:36px 40px;background:#fff;color:#1a1a1a;font-family:Arial,Helvetica,sans-serif;line-height:1.55;font-size:14px;box-sizing:border-box;">
     <div style="border-bottom:3px solid #10B981;padding-bottom:12px;margin-bottom:18px;">
       <div style="font-size:13px;color:#10B981;font-weight:bold;letter-spacing:0.5px;">INVICTUS.MED · FICHA DE ESTUDO</div>
-      <div style="font-size:26px;font-weight:bold;color:#0B1F18;margin-top:4px;">${esc(d.nome || "Ficha")}</div>
+      <div style="font-size:26px;font-weight:bold;color:#10120F;margin-top:4px;">${esc(d.nome || "Ficha")}</div>
     </div>
     <style>
       #pdfDoc h2{font-size:16px;color:#0B6B4F;margin:18px 0 6px;border-bottom:1px solid #e2e2e2;padding-bottom:3px;}
@@ -1043,7 +1043,7 @@ function generatePDF(d) {
 
   const nome = "Invictus-Med-" + String(d.nome || "ficha").normalize("NFD").replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "-").slice(0, 40);
   doc.save(nome + ".pdf");
-  toast("PDF baixado! 📄");
+  toast("PDF baixado.");
 }
 
 /* Monta os blocos de conteúdo (texto) para o PDF, tanto doença quanto fármaco. */
@@ -1264,7 +1264,7 @@ async function generateABNT(d, btn) {
     const copiou = await copyToClipboard(texto);
     if (!copiou) throw errWithCode("clipboard", "COPIA");
 
-    toast("Referências copiadas em ABNT! 📋");
+    toast("Referências copiadas em ABNT.");
     if (btn) { btn.textContent = "✓ Copiado em ABNT"; setTimeout(() => { btn.disabled = false; btn.textContent = original; }, 2500); }
   } catch (e) {
     toast("Não foi possível copiar agora. Tente novamente.");
@@ -1290,7 +1290,7 @@ async function generateCase(d) {
     const cod = codeOf(e) || "ERR";
     out.innerHTML = `<div class="case-err">Não foi possível gerar o caso agora. Tente novamente em instantes.
       <span class="case-err__code">cód. ${escapeHTML(cod)}</span></div>`;
-    if (btn) { btn.disabled = false; btn.textContent = "📋 Gerar estudo de caso"; }
+    if (btn) { btn.disabled = false; btn.textContent = "Gerar estudo de caso"; }
   }
 }
 
@@ -1324,7 +1324,7 @@ function renderCase(c, out, d) {
     ${row("Exame físico", c.exame_fisico)}
     ${row("Exames complementares", c.exames_complementares)}
     ${row("Conduta esperada", c.conduta)}
-    ${c.pergunta_raciocinio ? `<div class="case-q"><span class="case-q__lbl">🧠 Para refletir</span><p>${escapeHTML(toText(c.pergunta_raciocinio))}</p></div>` : ""}
+    ${c.pergunta_raciocinio ? `<div class="case-q"><span class="case-q__lbl">Para refletir</span><p>${escapeHTML(toText(c.pergunta_raciocinio))}</p></div>` : ""}
     <button class="case-btn case-btn--again" id="btnCaseAgain" type="button">↻ Gerar outro caso</button>`;
   const again = $("#btnCaseAgain", out);
   if (again) again.addEventListener("click", () => generateCase(d));
@@ -1586,7 +1586,7 @@ function initVoice() {
 /* =================================================================
    12) TEMA (claro/escuro) — nativo via prefers-color-scheme
    ================================================================= */
-const THEME_COLOR = { dark: "#0C1B16", light: "#F1F9F5" };
+const THEME_COLOR = { dark: "#0B0E0D", light: "#F7F8F8" };
 
 function applyTheme(theme) {
   const t = theme === "light" ? "light" : "dark";

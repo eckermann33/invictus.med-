@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#0C1B16" />
+  <meta name="theme-color" content="#0B0E0D" />
   <meta name="description" content="Invictus.Med — análise clínica estruturada de doenças, síndromes e condições médicas. Ferramenta de referência para estudantes e profissionais da saúde." />
   <meta name="color-scheme" content="dark light" />
   <title>Invictus.Med — Referência Clínica Inteligente</title>
 
   <!-- Ícone da aba: o mesmo glifo de pulso da marca, embutido (sem requisição extra) -->
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230A1A11'/%3E%3Cpolyline points='6,32 18,32 24,18 31,46 37,32 46,32 50,25 54,39 58,32' fill='none' stroke='%2334D399' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230B0E0D'/%3E%3Cpolyline points='6,32 18,32 24,18 31,46 37,32 46,32 50,25 54,39 58,32' fill='none' stroke='%2334D399' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
 
   <!-- Compartilhamento em redes sociais -->
   <meta property="og:type" content="website" />
@@ -29,7 +29,7 @@
           : (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
         document.documentElement.setAttribute("data-theme", tema);
         var meta = document.querySelector('meta[name="theme-color"]');
-        if (meta) meta.setAttribute("content", tema === "light" ? "#F1F9F5" : "#0C1B16");
+        if (meta) meta.setAttribute("content", tema === "light" ? "#F7F8F8" : "#0B0E0D");
       } catch (e) { /* localStorage bloqueado — segue com o tema escuro padrão */ }
     })();
   </script>
@@ -37,9 +37,9 @@
   <!-- Tipografia (fontes web; o site continua funcional com fontes do sistema caso não carreguem) -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
 
-  <link rel="stylesheet" href="style.css?v=13" />
+  <link rel="stylesheet" href="style.css?v=14" />
 </head>
 <body>
 
@@ -178,10 +178,10 @@
         <input id="studyTema" class="study__input" type="text" placeholder="Tema para estudar (ex.: Insuficiência cardíaca)…" />
       </div>
       <div class="study__tools">
-        <button class="study-tool" type="button" data-modo="quiz">🧪 Quiz</button>
-        <button class="study-tool" type="button" data-modo="flashcards">🃏 Flashcards</button>
-        <button class="study-tool" type="button" data-modo="resumo">📄 Resumo</button>
-        <button class="study-tool" type="button" data-modo="mapa">🧠 Mapa mental</button>
+        <button class="study-tool" type="button" data-modo="quiz">Quiz</button>
+        <button class="study-tool" type="button" data-modo="flashcards">Flashcards</button>
+        <button class="study-tool" type="button" data-modo="resumo">Resumo</button>
+        <button class="study-tool" type="button" data-modo="mapa">Mapa mental</button>
       </div>
       <p class="study__hint">Escolha uma ferramenta acima. Cada uma é gerada na hora, só quando você pede.</p>
       <div class="study__out" id="studyOut"></div>
@@ -258,6 +258,6 @@
        Sobre travar a versão com SRI (integrity), veja o README. -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"
           crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
-  <script src="script.js?v=13" defer></script>
+  <script src="script.js?v=14" defer></script>
 </body>
 </html>
