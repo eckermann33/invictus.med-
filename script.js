@@ -550,6 +550,7 @@ async function analyze(termRaw) {
   hide(els.results);
   hide(els.studyView);
   hide($("#anamneseView"));
+  hide($("#calcView"));
   hide(els.empty);
   hide(els.hero);
   show(els.loader);
@@ -1915,7 +1916,8 @@ const anamSalvar = () => store.set(AKEY, anamDados);
 /* ---------- Abertura e fechamento ---------- */
 function abrirAnamnese() {
   anamCarregar();
-  hide(els.results); hide(els.empty); hide(els.notice); hide(els.loader); hide(els.hero); hide(els.studyView);
+  hide(els.results); hide(els.empty); hide(els.notice); hide(els.loader); hide(els.hero);
+  hide(els.studyView); hide($("#calcView"));
   show($("#anamneseView"));
   anamRenderizar();
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -2315,12 +2317,480 @@ function ligarEventosAnamnese() {
   });
 }
 
+
 /* =================================================================
-   17) INICIALIZAÇÃO
+   CALCULADORAS E ESCORES CLÍNICOS
+   -----------------------------------------------------------------
+   Tudo aqui é aritmética: nenhuma chamada de IA, custo zero, resposta
+   instantânea e impossível de alucinar. É o mesmo princípio que já
+   funciona na montagem do texto da anamnese.
+
+   Cada escore declara seus campos e uma função que devolve
+   { valor, rotulo, nivel, nota }. "nivel" pinta o resultado:
+   ok | atencao | alerta.
+   ================================================================= */
+
+/* Tipos de campo: num (número), opt (escolha única), sim (sim/não) */
+const ESCORES = [
+  {
+    id: "imc",
+    nome: "IMC",
+    area: "Geral",
+    descricao: "Índice de massa corporal e faixa de classificação.",
+    campos: [
+      { id: "peso", rotulo: "Peso", tipo: "num", sufixo: "kg", min: 1, max: 400, passo: "0.1" },
+      { id: "altura", rotulo: "Altura", tipo: "num", sufixo: "m", min: 0.5, max: 2.5, passo: "0.01" },
+    ],
+    calcular: v => {
+      const imc = v.peso / (v.altura * v.altura);
+      const faixas = [
+        [18.5, "Baixo peso", "atencao"], [25, "Eutrofia", "ok"], [30, "Sobrepeso", "atencao"],
+        [35, "Obesidade grau I", "alerta"], [40, "Obesidade grau II", "alerta"],
+        [Infinity, "Obesidade grau III", "alerta"],
+      ];
+      const [, rotulo, nivel] = faixas.find(([lim]) => imc < lim);
+      return { valor: imc.toFixed(1), unidade: "kg/m²", rotulo, nivel };
+    },
+  },
+  {
+    id: "superficie",
+    nome: "Superfície corporal",
+    area: "Geral",
+    descricao: "Fórmula de Mosteller — usada em doses de quimioterapia.",
+    campos: [
+      { id: "peso", rotulo: "Peso", tipo: "num", sufixo: "kg", min: 1, max: 400, passo: "0.1" },
+      { id: "altura", rotulo: "Altura", tipo: "num", sufixo: "cm", min: 30, max: 250, passo: "1" },
+    ],
+    calcular: v => ({
+      valor: Math.sqrt((v.altura * v.peso) / 3600).toFixed(2),
+      unidade: "m²", rotulo: "Superfície corporal", nivel: "ok",
+    }),
+  },
+  {
+    id: "cockcroft",
+    nome: "Clearance de creatinina",
+    area: "Nefrologia",
+    descricao: "Cockcroft-Gault. Estima a função renal para ajuste de dose.",
+    campos: [
+      { id: "idade", rotulo: "Idade", tipo: "num", sufixo: "anos", min: 1, max: 120 },
+      { id: "peso", rotulo: "Peso", tipo: "num", sufixo: "kg", min: 1, max: 400, passo: "0.1" },
+      { id: "creatinina", rotulo: "Creatinina sérica", tipo: "num", sufixo: "mg/dL", min: 0.1, max: 20, passo: "0.01" },
+      { id: "sexo", rotulo: "Sexo", tipo: "opt", opcoes: [["m", "Masculino"], ["f", "Feminino"]] },
+    ],
+    calcular: v => {
+      const base = ((140 - v.idade) * v.peso) / (72 * v.creatinina);
+      const cl = v.sexo === "f" ? base * 0.85 : base;
+      const faixas = [
+        [15, "Falência renal (G5)", "alerta"], [30, "Redução grave (G4)", "alerta"],
+        [45, "Redução moderada a grave (G3b)", "alerta"], [60, "Redução leve a moderada (G3a)", "atencao"],
+        [90, "Redução leve (G2)", "atencao"], [Infinity, "Normal ou elevada (G1)", "ok"],
+      ];
+      const [, rotulo, nivel] = faixas.find(([lim]) => cl < lim);
+      return { valor: cl.toFixed(1), unidade: "mL/min", rotulo, nivel,
+               nota: "Cockcroft-Gault usa peso real; em obesidade, considere peso ajustado." };
+    },
+  },
+  {
+    id: "chadsvasc",
+    nome: "CHA₂DS₂-VASc",
+    area: "Cardiologia",
+    descricao: "Risco de AVC na fibrilação atrial. Orienta a anticoagulação.",
+    campos: [
+      { id: "icc", rotulo: "Insuficiência cardíaca / disfunção de VE", tipo: "sim" },
+      { id: "has", rotulo: "Hipertensão arterial", tipo: "sim" },
+      { id: "idade75", rotulo: "Idade ≥ 75 anos", tipo: "sim", peso: 2 },
+      { id: "dm", rotulo: "Diabetes mellitus", tipo: "sim" },
+      { id: "avc", rotulo: "AVC, AIT ou tromboembolismo prévio", tipo: "sim", peso: 2 },
+      { id: "vascular", rotulo: "Doença vascular (IAM, DAP, placa aórtica)", tipo: "sim" },
+      { id: "idade65", rotulo: "Idade entre 65 e 74 anos", tipo: "sim" },
+      { id: "feminino", rotulo: "Sexo feminino", tipo: "sim" },
+    ],
+    calcular: (v, total) => {
+      const nivel = total >= 2 ? "alerta" : total === 1 ? "atencao" : "ok";
+      const rotulo = total === 0 ? "Risco baixo" : total === 1 ? "Risco intermediário" : "Risco alto";
+      return { valor: total, unidade: "pontos", rotulo, nivel,
+               nota: "Idade ≥75 e AVC prévio valem 2 pontos cada. Interprete junto com o risco de sangramento." };
+    },
+  },
+  {
+    id: "hasbled",
+    nome: "HAS-BLED",
+    area: "Cardiologia",
+    descricao: "Risco de sangramento em quem usa anticoagulante.",
+    campos: [
+      { id: "has", rotulo: "Hipertensão não controlada (PAS > 160)", tipo: "sim" },
+      { id: "renal", rotulo: "Função renal alterada", tipo: "sim" },
+      { id: "hepatica", rotulo: "Função hepática alterada", tipo: "sim" },
+      { id: "avc", rotulo: "AVC prévio", tipo: "sim" },
+      { id: "sangramento", rotulo: "Sangramento prévio ou predisposição", tipo: "sim" },
+      { id: "inr", rotulo: "INR instável", tipo: "sim" },
+      { id: "idade", rotulo: "Idade > 65 anos", tipo: "sim" },
+      { id: "drogas", rotulo: "Uso de AAS/AINE ou antiagregante", tipo: "sim" },
+      { id: "alcool", rotulo: "Uso abusivo de álcool", tipo: "sim" },
+    ],
+    calcular: (v, total) => {
+      const nivel = total >= 3 ? "alerta" : total === 2 ? "atencao" : "ok";
+      return { valor: total, unidade: "pontos",
+               rotulo: total >= 3 ? "Risco alto de sangramento" : "Risco não elevado", nivel,
+               nota: "Pontuação alta não contraindica anticoagulação — indica corrigir os fatores modificáveis." };
+    },
+  },
+  {
+    id: "curb65",
+    nome: "CURB-65",
+    area: "Pneumologia",
+    descricao: "Gravidade da pneumonia adquirida na comunidade.",
+    campos: [
+      { id: "confusao", rotulo: "Confusão mental", tipo: "sim" },
+      { id: "ureia", rotulo: "Ureia > 50 mg/dL", tipo: "sim" },
+      { id: "fr", rotulo: "Frequência respiratória ≥ 30 irpm", tipo: "sim" },
+      { id: "pa", rotulo: "PAS < 90 ou PAD ≤ 60 mmHg", tipo: "sim" },
+      { id: "idade", rotulo: "Idade ≥ 65 anos", tipo: "sim" },
+    ],
+    calcular: (v, total) => {
+      const mapa = [
+        ["Baixo risco — tratamento ambulatorial", "ok"],
+        ["Baixo risco — tratamento ambulatorial", "ok"],
+        ["Risco intermediário — considerar internação", "atencao"],
+        ["Risco alto — internação", "alerta"],
+        ["Risco muito alto — avaliar UTI", "alerta"],
+        ["Risco muito alto — avaliar UTI", "alerta"],
+      ];
+      const [rotulo, nivel] = mapa[total];
+      return { valor: total, unidade: "pontos", rotulo, nivel };
+    },
+  },
+  {
+    id: "qsofa",
+    nome: "qSOFA",
+    area: "Emergência",
+    descricao: "Triagem rápida de risco em suspeita de infecção.",
+    campos: [
+      { id: "fr", rotulo: "Frequência respiratória ≥ 22 irpm", tipo: "sim" },
+      { id: "consciencia", rotulo: "Alteração do nível de consciência (Glasgow < 15)", tipo: "sim" },
+      { id: "pas", rotulo: "PAS ≤ 100 mmHg", tipo: "sim" },
+    ],
+    calcular: (v, total) => {
+      return { valor: total, unidade: "pontos",
+               rotulo: total >= 2 ? "Alto risco — investigar sepse" : "Baixo risco pelo qSOFA",
+               nivel: total >= 2 ? "alerta" : "ok",
+               nota: "qSOFA negativo não exclui sepse. É triagem, não diagnóstico." };
+    },
+  },
+  {
+    id: "wells_tvp",
+    nome: "Wells (TVP)",
+    area: "Emergência",
+    descricao: "Probabilidade pré-teste de trombose venosa profunda.",
+    campos: [
+      { id: "cancer", rotulo: "Câncer ativo", tipo: "sim" },
+      { id: "paralisia", rotulo: "Paralisia, paresia ou imobilização de membro inferior", tipo: "sim" },
+      { id: "acamado", rotulo: "Acamado > 3 dias ou cirurgia maior nas últimas 12 semanas", tipo: "sim" },
+      { id: "dor", rotulo: "Dor à palpação do trajeto venoso profundo", tipo: "sim" },
+      { id: "edemaTodo", rotulo: "Edema de todo o membro inferior", tipo: "sim" },
+      { id: "panturrilha", rotulo: "Panturrilha > 3 cm maior que a contralateral", tipo: "sim" },
+      { id: "cacifo", rotulo: "Edema com cacifo no membro sintomático", tipo: "sim" },
+      { id: "colaterais", rotulo: "Veias colaterais superficiais não varicosas", tipo: "sim" },
+      { id: "tvpPrevia", rotulo: "TVP prévia documentada", tipo: "sim" },
+      { id: "alternativo", rotulo: "Diagnóstico alternativo ao menos tão provável", tipo: "sim", peso: -2 },
+    ],
+    calcular: (v, total) => {
+      const nivel = total >= 3 ? "alerta" : total >= 1 ? "atencao" : "ok";
+      const rotulo = total >= 3 ? "Probabilidade alta" : total >= 1 ? "Probabilidade moderada" : "Probabilidade baixa";
+      return { valor: total, unidade: "pontos", rotulo, nivel,
+               nota: "Diagnóstico alternativo mais provável subtrai 2 pontos." };
+    },
+  },
+  {
+    id: "childpugh",
+    nome: "Child-Pugh",
+    area: "Gastroenterologia",
+    descricao: "Gravidade da cirrose hepática.",
+    campos: [
+      { id: "bilirrubina", rotulo: "Bilirrubina total", tipo: "opt",
+        opcoes: [[1, "< 2 mg/dL"], [2, "2 a 3 mg/dL"], [3, "> 3 mg/dL"]] },
+      { id: "albumina", rotulo: "Albumina", tipo: "opt",
+        opcoes: [[1, "> 3,5 g/dL"], [2, "2,8 a 3,5 g/dL"], [3, "< 2,8 g/dL"]] },
+      { id: "inr", rotulo: "INR", tipo: "opt",
+        opcoes: [[1, "< 1,7"], [2, "1,7 a 2,3"], [3, "> 2,3"]] },
+      { id: "ascite", rotulo: "Ascite", tipo: "opt",
+        opcoes: [[1, "Ausente"], [2, "Leve"], [3, "Moderada a grave"]] },
+      { id: "encefalopatia", rotulo: "Encefalopatia", tipo: "opt",
+        opcoes: [[1, "Ausente"], [2, "Graus I e II"], [3, "Graus III e IV"]] },
+    ],
+    calcular: (v, total) => {
+      const classe = total <= 6 ? "A" : total <= 9 ? "B" : "C";
+      const nivel = classe === "A" ? "ok" : classe === "B" ? "atencao" : "alerta";
+      return { valor: total, unidade: "pontos", rotulo: `Classe ${classe}`, nivel };
+    },
+  },
+  {
+    id: "glasgow",
+    nome: "Escala de coma de Glasgow",
+    area: "Neurologia",
+    descricao: "Nível de consciência. Vai de 3 a 15 pontos.",
+    campos: [
+      { id: "ocular", rotulo: "Abertura ocular", tipo: "opt",
+        opcoes: [[4, "Espontânea"], [3, "Ao comando verbal"], [2, "À dor"], [1, "Ausente"]] },
+      { id: "verbal", rotulo: "Resposta verbal", tipo: "opt",
+        opcoes: [[5, "Orientado"], [4, "Confuso"], [3, "Palavras inapropriadas"], [2, "Sons incompreensíveis"], [1, "Ausente"]] },
+      { id: "motora", rotulo: "Resposta motora", tipo: "opt",
+        opcoes: [[6, "Obedece a comandos"], [5, "Localiza a dor"], [4, "Retirada à dor"], [3, "Flexão anormal"], [2, "Extensão anormal"], [1, "Ausente"]] },
+    ],
+    calcular: (v, total) => {
+      const nivel = total <= 8 ? "alerta" : total <= 12 ? "atencao" : "ok";
+      const rotulo = total <= 8 ? "Grave — considerar via aérea definitiva"
+        : total <= 12 ? "Moderado" : "Leve";
+      return { valor: total, unidade: "de 15", rotulo, nivel };
+    },
+  },
+  {
+    id: "cargatabagica",
+    nome: "Carga tabágica",
+    area: "Pneumologia",
+    descricao: "Maços-ano. A partir de 20, rastreamento de câncer de pulmão entra em discussão.",
+    campos: [
+      { id: "cigarros", rotulo: "Cigarros por dia", tipo: "num", min: 1, max: 200 },
+      { id: "anos", rotulo: "Anos de tabagismo", tipo: "num", min: 1, max: 90 },
+    ],
+    calcular: v => {
+      const ma = (v.cigarros / 20) * v.anos;
+      const nivel = ma >= 30 ? "alerta" : ma >= 20 ? "atencao" : "ok";
+      return { valor: Math.round(ma * 10) / 10, unidade: "maços-ano",
+               rotulo: ma >= 20 ? "Carga elevada" : "Carga baixa", nivel };
+    },
+  },
+];
+
+/* Soma genérica. Para caixas de "sim", usa o peso declarado no campo (padrão 1);
+   para escolha única, soma o valor da opção escolhida. Assim o peso existe em um
+   lugar só — o rótulo mostrado na tela e a conta nunca divergem. */
+function somarEscore(esc, v) {
+  return esc.campos.reduce((s, c) => {
+    if (c.tipo === "sim") return s + (v[c.id] ? (c.peso ?? 1) : 0);
+    if (c.tipo === "opt" && v[c.id] !== undefined && v[c.id] !== "") {
+      const n = Number(v[c.id]);
+      return s + (Number.isFinite(n) ? n : 0);
+    }
+    return s;
+  }, 0);
+}
+
+/* ---------- Estado ---------- */
+const CKEY = "invictus.calc";
+let calcAtual = null;      // escore aberto
+let calcValores = {};      // respostas do escore aberto
+
+/* ---------- Abertura ---------- */
+function abrirCalculadoras(idInicial) {
+  hide(els.results); hide(els.empty); hide(els.notice); hide(els.loader); hide(els.hero);
+  hide(els.studyView); hide($("#anamneseView"));
+  show($("#calcView"));
+  if (idInicial) abrirEscore(idInicial); else listarEscores();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function fecharCalculadoras() {
+  hide($("#calcView"));
+  if (currentData) show(els.results); else { show(els.hero); show(els.empty); }
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+/* ---------- Lista ---------- */
+function listarEscores(filtro = "") {
+  calcAtual = null;
+  hide($("#calcDetalhe"));
+  show($("#calcBusca"));
+
+  const q = filtro.trim().toLowerCase();
+  const achados = ESCORES.filter(e =>
+    !q || e.nome.toLowerCase().includes(q) || e.area.toLowerCase().includes(q) ||
+    e.descricao.toLowerCase().includes(q));
+
+  const lista = $("#calcLista");
+  if (!achados.length) {
+    lista.innerHTML = `<p class="calc__vazio">Nenhum escore com esse nome.</p>`;
+    show(lista);
+    return;
+  }
+
+  // Agrupa por área, preservando a ordem em que as áreas aparecem
+  const areas = [];
+  for (const e of achados) if (!areas.includes(e.area)) areas.push(e.area);
+
+  lista.innerHTML = areas.map(area => `
+    <section class="calc-area">
+      <h3 class="calc-area__t">${escapeHTML(area)}</h3>
+      <div class="calc-grid">
+        ${achados.filter(e => e.area === area).map(e => `
+          <button class="calc-card" type="button" data-esc="${escapeHTML(e.id)}">
+            <span class="calc-card__n">${escapeHTML(e.nome)}</span>
+            <span class="calc-card__d">${escapeHTML(e.descricao)}</span>
+          </button>`).join("")}
+      </div>
+    </section>`).join("");
+  show(lista);
+
+  $$(".calc-card", lista).forEach(b =>
+    b.addEventListener("click", () => abrirEscore(b.dataset.esc)));
+}
+
+/* ---------- Um escore ---------- */
+function abrirEscore(id) {
+  const esc = ESCORES.find(e => e.id === id);
+  if (!esc) return;
+  calcAtual = esc;
+  calcValores = {};
+
+  hide($("#calcLista"));
+  hide($("#calcBusca"));
+
+  $("#calcDetalhe").innerHTML = `
+    <button class="calc__voltar" id="calcVoltarLista" type="button">
+      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Todos os escores
+    </button>
+    <h3 class="calc__h">${escapeHTML(esc.nome)}</h3>
+    <p class="calc__desc">${escapeHTML(esc.descricao)}</p>
+    <div class="calc__campos">${esc.campos.map(campoHTML).join("")}</div>
+    <div class="calc-res" id="calcRes" hidden></div>
+    <p class="calc__aviso">
+      Resultado calculado no seu navegador, sem IA. Ainda assim,
+      <b>escore não substitui julgamento clínico</b> — interprete no contexto do paciente.
+    </p>`;
+  show($("#calcDetalhe"));
+
+  $("#calcVoltarLista").addEventListener("click", () => { listarEscores($("#calcFiltro").value); });
+  ligarCamposEscore();
+  recalcular();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function campoHTML(c) {
+  const peso = c.tipo === "sim" && (c.peso ?? 1) !== 1
+    ? `<span class="calc-peso">${c.peso > 0 ? "+" : ""}${c.peso}</span>` : "";
+
+  if (c.tipo === "sim") {
+    return `<button class="calc-sim" type="button" data-campo="${escapeHTML(c.id)}" aria-pressed="false">
+      <span class="calc-sim__box" aria-hidden="true"></span>
+      <span class="calc-sim__t">${escapeHTML(c.rotulo)}</span>${peso}
+    </button>`;
+  }
+  if (c.tipo === "opt") {
+    return `<div class="calc-campo">
+      <span class="calc-campo__r">${escapeHTML(c.rotulo)}</span>
+      <div class="calc-opts" role="group" aria-label="${escapeHTML(c.rotulo)}">
+        ${c.opcoes.map(([val, txt]) => `
+          <button class="calc-opt" type="button" data-campo="${escapeHTML(c.id)}"
+                  data-valor="${escapeHTML(String(val))}" aria-pressed="false">
+            ${escapeHTML(txt)}<span class="calc-peso">${escapeHTML(String(val))}</span>
+          </button>`).join("")}
+      </div></div>`;
+  }
+  return `<div class="calc-campo calc-campo--num">
+    <label class="calc-campo__r" for="calc-${escapeHTML(c.id)}">${escapeHTML(c.rotulo)}</label>
+    <div class="calc-num">
+      <input id="calc-${escapeHTML(c.id)}" type="number" inputmode="decimal"
+             data-campo="${escapeHTML(c.id)}"
+             min="${c.min ?? 0}" max="${c.max ?? 9999}" step="${c.passo || "1"}" />
+      ${c.sufixo ? `<span class="calc-num__s">${escapeHTML(c.sufixo)}</span>` : ""}
+    </div></div>`;
+}
+
+function ligarCamposEscore() {
+  const d = $("#calcDetalhe");
+
+  $$(".calc-sim", d).forEach(b => b.addEventListener("click", () => {
+    const ligado = !(calcValores[b.dataset.campo] === true);
+    calcValores[b.dataset.campo] = ligado;
+    b.classList.toggle("is-on", ligado);
+    b.setAttribute("aria-pressed", String(ligado));
+    recalcular();
+  }));
+
+  $$(".calc-opt", d).forEach(b => b.addEventListener("click", () => {
+    const campo = b.dataset.campo;
+    calcValores[campo] = b.dataset.valor;
+    $$(`.calc-opt[data-campo="${campo}"]`, d).forEach(o => {
+      const on = o === b;
+      o.classList.toggle("is-on", on);
+      o.setAttribute("aria-pressed", String(on));
+    });
+    recalcular();
+  }));
+
+  $$(".calc-num input", d).forEach(el => el.addEventListener("input", () => {
+    const n = parseFloat(el.value);
+    if (Number.isFinite(n)) calcValores[el.dataset.campo] = n;
+    else delete calcValores[el.dataset.campo];
+    recalcular();
+  }));
+}
+
+/* Só calcula quando dá: um escore numérico com campo em branco produziria
+   NaN ou uma divisão por zero mostrada como resultado. */
+function podeCalcular(esc) {
+  return esc.campos.every(c => {
+    if (c.tipo === "num") {
+      const v = calcValores[c.id];
+      return Number.isFinite(v) && v > 0;
+    }
+    if (c.tipo === "opt") return calcValores[c.id] !== undefined && calcValores[c.id] !== "";
+    return true;   // caixas de "sim" em branco valem como "não"
+  });
+}
+
+function recalcular() {
+  const esc = calcAtual;
+  const out = $("#calcRes");
+  if (!esc || !out) return;
+
+  if (!podeCalcular(esc)) {
+    const faltam = esc.campos.filter(c => c.tipo !== "sim" &&
+      (calcValores[c.id] === undefined || calcValores[c.id] === "")).length;
+    out.innerHTML = `<p class="calc-res__espera">Preencha ${faltam === 1 ? "o campo que falta" : `os ${faltam} campos`} para ver o resultado.</p>`;
+    show(out);
+    return;
+  }
+
+  let r;
+  try { r = esc.calcular(calcValores, somarEscore(esc, calcValores)); }
+  catch { out.innerHTML = `<p class="calc-res__espera">Não consegui calcular com esses valores.</p>`; show(out); return; }
+
+  out.className = `calc-res nivel-${r.nivel || "ok"}`;
+  out.innerHTML = `
+    <div class="calc-res__linha">
+      <span class="calc-res__v">${escapeHTML(String(r.valor))}</span>
+      ${r.unidade ? `<span class="calc-res__u">${escapeHTML(r.unidade)}</span>` : ""}
+    </div>
+    <p class="calc-res__r">${escapeHTML(r.rotulo || "")}</p>
+    ${r.nota ? `<p class="calc-res__n">${escapeHTML(r.nota)}</p>` : ""}
+    <button class="calc-res__copiar" id="calcCopiar" type="button">Copiar resultado</button>`;
+  show(out);
+
+  $("#calcCopiar").addEventListener("click", async () => {
+    const texto = `${esc.nome}: ${r.valor}${r.unidade ? " " + r.unidade : ""} — ${r.rotulo || ""}`.trim();
+    toast(await copyToClipboard(texto) ? "Resultado copiado." : "Não foi possível copiar.");
+  });
+}
+
+function ligarEventosCalc() {
+  $("#btnCalc")?.addEventListener("click", () => abrirCalculadoras());
+  $("#btnCalcHero")?.addEventListener("click", () => abrirCalculadoras());
+  $("#calcVoltarInicio")?.addEventListener("click", fecharCalculadoras);
+  $("#calcFiltro")?.addEventListener("input", e => {
+    if (calcAtual) return;
+    listarEscores(e.target.value);
+  });
+}
+
+/* =================================================================
+   18) INICIALIZAÇÃO
    ================================================================= */
 document.addEventListener("DOMContentLoaded", () => {
   initTheme();
   initVoice();
   bindGlobalEvents();
   ligarEventosAnamnese();
+  ligarEventosCalc();
 });

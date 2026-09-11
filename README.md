@@ -44,6 +44,24 @@ Tem também um **estudo de caso**: um paciente fictício com história, exame f�
 exames e uma pergunta de raciocínio no fim, sem a resposta. Bom para testar se
 você realmente entendeu a condição, e não só decorou a lista.
 
+## Calculadoras e escores
+
+Onze escores clínicos que os livros mandam decorar e ninguém decora:
+CHA₂DS₂-VASc, HAS-BLED, Wells para TVP, CURB-65, qSOFA, Child-Pugh, Glasgow,
+clearance de creatinina, IMC, superfície corporal e carga tabágica.
+
+Essa parte **não usa IA nenhuma**. É aritmética rodando no seu navegador:
+resultado na hora, de graça, funciona sem internet e é impossível de alucinar.
+Mesmo princípio da montagem do texto da anamnese.
+
+O resultado aparece enquanto você preenche e muda de cor conforme a gravidade.
+E o peso de cada item fica visível ao lado dele — porque "idade ≥ 75 vale 2
+pontos" é justamente o tipo de coisa que se esquece na hora da prova.
+
+A conta de cada escore tem teste automatizado com valores conhecidos, rodando
+contra o próprio `script.js`: `node testes/escores.test.mjs`. Numa calculadora
+clínica, errar a conta em silêncio é o pior defeito possível.
+
 ## A aba de anamnese
 
 Uma segunda ferramenta, separada da busca: um roteiro que monta uma anamnese
