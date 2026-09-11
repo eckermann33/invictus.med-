@@ -1104,3 +1104,59 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 0 clamp(16px, 4vw, 40px)
   .anam__corpo { padding: 20px 16px; }
   .anam-res__acoes .anam-res__btn { flex: 1 1 100%; }
 }
+
+/* =================================================================
+   ALVOS DE TOQUE E DESTAQUE DA ANAMNESE
+   ================================================================= */
+
+/* 44x44 é o mínimo recomendado para toque. Os botões do topo tinham
+   33px de largura no celular: dava para errar o alvo e acertar o vizinho. */
+.icon-btn { min-width: 44px; min-height: 44px; justify-content: center; }
+
+/* A anamnese é destino, não painel: ganha a cor da marca para se separar
+   dos três ícones utilitários ao lado. */
+.icon-btn--destaque { color: var(--blue-bright); }
+.icon-btn--destaque:hover { color: var(--blue-bright); background: color-mix(in srgb, var(--blue) 14%, transparent); }
+
+/* Porta de entrada no hero — é aqui que a descoberta acontece de verdade */
+.acao-card {
+  display: flex; align-items: center; gap: 16px; text-align: left;
+  width: 100%; max-width: 640px; margin: 22px auto 0;
+  padding: 18px 20px;
+  border-radius: var(--r);
+  background: var(--panel);
+  border: 1px solid color-mix(in srgb, var(--blue) 28%, transparent);
+  color: var(--text);
+  transition: border-color 0.2s var(--ease), background 0.2s var(--ease), transform 0.2s var(--ease);
+}
+.acao-card:hover {
+  border-color: color-mix(in srgb, var(--blue) 55%, transparent);
+  background: color-mix(in srgb, var(--blue) 8%, transparent);
+}
+.acao-card:active { transform: scale(0.995); }
+
+.acao-card__ico {
+  display: grid; place-items: center; flex-shrink: 0;
+  width: 42px; height: 42px; border-radius: 12px;
+  color: var(--blue-bright);
+  background: color-mix(in srgb, var(--blue) 15%, transparent);
+}
+.acao-card__txt { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
+.acao-card__t { font-family: var(--font-display); font-weight: 600; font-size: 1rem; }
+.acao-card__d { color: var(--text-mut); font-size: 0.88rem; line-height: 1.45; }
+.acao-card__seta { color: var(--text-mut); flex-shrink: 0; }
+.acao-card:hover .acao-card__seta { color: var(--blue-bright); }
+
+@media (max-width: 480px) {
+  .acao-card { gap: 13px; padding: 15px 16px; }
+  .acao-card__ico { width: 36px; height: 36px; }
+  .acao-card__d { font-size: 0.84rem; }
+}
+
+/* Com cinco alvos de 44px, a marca não cabe inteira nas telas mais estreitas.
+   Truncar para "Invictus..." parece defeito; mostrar só o glifo de pulso
+   parece decisão. */
+@media (max-width: 420px) {
+  .brand__name { display: none; }
+  .brand { gap: 0; }
+}

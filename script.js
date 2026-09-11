@@ -2305,6 +2305,7 @@ function limparAnamnese() {
 
 function ligarEventosAnamnese() {
   $("#btnAnamnese")?.addEventListener("click", abrirAnamnese);
+  $("#btnAnamneseHero")?.addEventListener("click", abrirAnamnese);
   $("#anamVoltarInicio")?.addEventListener("click", fecharAnamnese);
   $("#anamLimpar")?.addEventListener("click", limparAnamnese);
   $("#anamAnterior")?.addEventListener("click", () => {

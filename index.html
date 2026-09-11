@@ -39,7 +39,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
 
-  <link rel="stylesheet" href="style.css?v=14" />
+  <link rel="stylesheet" href="style.css?v=15" />
 </head>
 <body>
 
@@ -72,7 +72,7 @@
         <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 17.3 6.2 20.5l1.1-6.5L2.6 9.4l6.5-.9L12 2.6l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
         <span class="icon-btn__label">Favoritos</span>
       </button>
-      <button class="icon-btn" id="btnAnamnese" type="button" aria-label="Montar uma anamnese estruturada">
+      <button class="icon-btn icon-btn--destaque" id="btnAnamnese" type="button" aria-label="Montar uma anamnese estruturada">
         <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M8 4h8a1 1 0 0 1 1 1v1h2a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h2V5a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 12h6M9 16h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
         <span class="icon-btn__label">Anamnese</span>
       </button>
@@ -128,6 +128,19 @@
             <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
         </div>
+
+        <!-- Segunda ferramenta do site: precisa de porta própria, não só
+             de um ícone no cabeçalho -->
+        <button class="acao-card" id="btnAnamneseHero" type="button">
+          <span class="acao-card__ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="22" height="22"><path d="M8 4h8a1 1 0 0 1 1 1v1h2a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h2V5a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 12h6M9 16h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          </span>
+          <span class="acao-card__txt">
+            <span class="acao-card__t">Montar uma anamnese</span>
+            <span class="acao-card__d">Roteiro guiado, quase só com cliques. No fim, o texto pronto para copiar.</span>
+          </span>
+          <svg class="acao-card__seta" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
 
         <!-- Exemplos rápidos -->
         <div class="chips" aria-label="Exemplos de busca">
@@ -290,6 +303,6 @@
        Sobre travar a versão com SRI (integrity), veja o README. -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"
           crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
-  <script src="script.js?v=14" defer></script>
+  <script src="script.js?v=15" defer></script>
 </body>
 </html>
