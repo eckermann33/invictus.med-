@@ -76,8 +76,8 @@ para apagar tudo.
 
 Histórico e favoritos ficam salvos no seu navegador. Busca por voz, se o navegador
 suportar. Tema claro e escuro, que segue a preferência do sistema até você escolher
-uma. Exportação em PDF e uma versão limpa para impressão. E um botão que copia as
-referências já formatadas em ABNT, para colar direto no trabalho.
+uma. Exportação em PDF e uma versão limpa para impressão. E um botão que formata as
+referências em ABNT — mostrando cada uma antes de você copiar.
 
 No rodapé tem um "Aprovado por Dr. House". Passe o mouse em cima.
 
@@ -88,9 +88,17 @@ praticamente qualquer coisa sem precisar de um banco de dados gigante — e é
 também o motivo de o conteúdo poder sair errado.
 
 Então vale ser direto: isto é material de estudo. Não serve para decidir conduta
-e não substitui consulta, diagnóstico ou tratamento de um profissional. As
-referências que a ficha cita estão ali justamente para você conferir antes de
-levar qualquer coisa para a prática.
+e não substitui consulta, diagnóstico ou tratamento de um profissional.
+
+Por isso as referências ficam visíveis na ficha, cada uma com um link de busca
+no Google Acadêmico e no PubMed. **Confira antes de citar**: modelos de
+linguagem inventam citações com aparência impecável — autor plausível, revista
+real, ano coerente — que simplesmente não existem. O botão de ABNT mostra o
+resultado na tela e só copia quando você pede, justamente para você ler antes.
+
+E se achar um erro, tem um botão de reportar em cada ficha. Conteúdo gerado por
+IA erra, e saber onde ele erra mais é o que permite ir substituindo as partes
+críticas por texto escrito à mão.
 
 Sobre privacidade: o site manda para a IA só o termo que você digitou, nada mais.
 Histórico, favoritos e tema ficam no `localStorage` do seu navegador e não saem

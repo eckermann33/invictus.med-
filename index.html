@@ -296,6 +296,42 @@
     <p class="drawer__empty" id="drawerEmpty" hidden>Nada por aqui ainda.</p>
   </aside>
 
+  <!-- ===================== REPORTAR ERRO DE CONTEÚDO ===================== -->
+  <div class="modal-scrim" id="reporteScrim" hidden></div>
+  <div class="modal" id="reporteModal" hidden role="dialog" aria-modal="true" aria-labelledby="reporteTitulo">
+    <button class="modal__fechar" id="reporteFechar" type="button" aria-label="Fechar">
+      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </button>
+
+    <div id="reporteForm">
+      <h2 class="modal__titulo" id="reporteTitulo">Achou um erro?</h2>
+      <p class="modal__texto">
+        Em <b id="reporteFicha">esta ficha</b>. Relatos ajudam a saber onde o modelo
+        erra mais — e o que vale substituir por conteúdo escrito à mão.
+      </p>
+
+      <p class="modal__label">Onde está o erro?</p>
+      <div class="rep-chips" id="reporteSecoes" role="group" aria-label="Seções com erro"></div>
+
+      <label class="modal__label" for="reporteTexto">O que está errado?</label>
+      <textarea class="modal__input modal__input--area" id="reporteTexto" rows="4"
+                placeholder="Ex.: a dose citada está errada, o correto é…"></textarea>
+
+      <button class="btn btn--primary modal__btn" id="reporteEnviar" type="button">Enviar relato</button>
+    </div>
+
+    <div id="reporteSaida" hidden>
+      <h2 class="modal__titulo">Copie e me mande</h2>
+      <p class="modal__texto">
+        Ainda não tenho servidor para receber relatos automaticamente. Copie o texto
+        abaixo e me mande no
+        <a class="link-btn" href="https://www.instagram.com/_eckermann" target="_blank" rel="noopener noreferrer">Instagram</a>.
+      </p>
+      <textarea class="modal__input modal__input--area" id="reporteSaidaTexto" rows="7" readonly></textarea>
+      <button class="btn btn--primary modal__btn" id="reporteCopiar" type="button">Copiar relato</button>
+    </div>
+  </div>
+
   <!-- Notificação flutuante (toast) -->
   <div class="toast" id="toast" hidden role="status"></div>
 

@@ -37,6 +37,9 @@ const CONFIG = {
   PROXY_URL: "https://invictus-proxy.n9rn6tsb26.workers.dev/",   // ← URL do seu Worker
   MODEL: "gemini-2.5-flash",
   MAX_TOKENS: 8192,
+  // Endpoint para relatos de erro de conteúdo. Vazio = o site monta o texto
+  // e oferece cópia, em vez de enviar sozinho.
+  REPORT_URL: "",
   // Tempo máximo de espera por uma resposta (ms). Evita o carregamento infinito.
   TIMEOUT_MS: 45000,
   // Tamanho máximo do termo enviado à IA (evita payloads abusivos).
@@ -746,8 +749,9 @@ function buildSections(d) {
   /* Referências */
   if (has(d.referencias)) S.push({ id: "referencias", label: "Referências", html: `
     <div class="card__head"><span class="card__ico">${ICON.refs}</span><h2 class="card__title">Referências</h2></div>
-    <button class="abnt-btn" id="btnAbnt" type="button">Copiar referências em ABNT</button>
-    <p class="abnt-hint">As referências usadas são formatadas em ABNT e copiadas para colar no seu trabalho.</p>` });
+    ${listaReferencias(d.referencias)}
+    <button class="abnt-btn" id="btnAbnt" type="button">Formatar em ABNT</button>
+    <div class="abnt-out" id="abntOut" hidden></div>` });
 
   return S;
 }
@@ -793,10 +797,35 @@ function buildDrugSections(d) {
 
   if (has(d.referencias)) S.push({ id: "referencias", label: "Referências", html: `
     <div class="card__head"><span class="card__ico">${ICON.refs}</span><h2 class="card__title">Referências</h2></div>
-    <button class="abnt-btn" id="btnAbnt" type="button">Copiar referências em ABNT</button>
-    <p class="abnt-hint">As referências usadas são formatadas em ABNT e copiadas para colar no seu trabalho.</p>` });
+    ${listaReferencias(d.referencias)}
+    <button class="abnt-btn" id="btnAbnt" type="button">Formatar em ABNT</button>
+    <div class="abnt-out" id="abntOut" hidden></div>` });
 
   return S;
+}
+
+/* Referências na tela, cada uma com um caminho de um clique para conferir.
+   Antes elas nunca eram exibidas: a pessoa clicava e recebia citações
+   formatadas direto na área de transferência, prontas para colar num
+   trabalho, sem nunca ver o que estava copiando. Fabricação de citação é
+   uma falha conhecida de modelos de linguagem — então o mínimo é mostrar
+   e oferecer verificação. */
+function listaReferencias(refs) {
+  const itens = refs.map(r => {
+    const q = encodeURIComponent(String(r).slice(0, 300));
+    return `<li class="ref">
+      <span class="ref__txt">${escapeHTML(r)}</span>
+      <span class="ref__links">
+        <a href="https://scholar.google.com/scholar?q=${q}" target="_blank" rel="noopener noreferrer">Buscar</a>
+        <a href="https://pubmed.ncbi.nlm.nih.gov/?term=${q}" target="_blank" rel="noopener noreferrer">PubMed</a>
+      </span>
+    </li>`;
+  }).join("");
+  return `<ul class="refs">${itens}</ul>
+    <p class="ref__aviso">
+      Confira cada referência antes de citar. Estas foram indicadas pela IA e
+      <b>podem não existir</b> — modelos de linguagem inventam citações com aparência convincente.
+    </p>`;
 }
 
 function renderResult(d) {
@@ -839,6 +868,7 @@ function renderResult(d) {
         <button class="tool" id="tCopy" type="button"><svg viewBox="0 0 24 24" width="16" height="16"><rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10" fill="none" stroke="currentColor" stroke-width="2"/></svg><span>Copiar</span></button>
         <button class="tool" id="tShare" type="button"><svg viewBox="0 0 24 24" width="16" height="16"><circle cx="18" cy="5" r="3" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="6" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="19" r="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4" stroke="currentColor" stroke-width="2"/></svg><span>Compartilhar</span></button>
         <button class="tool" id="tPdf" type="button"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 9V3h9l3 3v3M6 18v3h12v-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><rect x="4" y="9" width="16" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="2"/></svg><span>PDF</span></button>
+        <button class="tool tool--reportar" id="tReportar" type="button"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 8v5M12 16h.01M10.3 3.9 2.5 18a1.8 1.8 0 0 0 1.6 2.7h15.8a1.8 1.8 0 0 0 1.6-2.7L13.7 3.9a1.8 1.8 0 0 0-3.4 0z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Reportar erro</span></button>
         <button class="tool" id="tPrint" type="button"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-2M6 14h12v7H6z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><span>Imprimir</span></button>
       </div>
     </section>`;
@@ -908,6 +938,7 @@ function bindResultEvents(d) {
   $("#tShare")?.addEventListener("click", () => shareContent(d));
   $("#tPdf")?.addEventListener("click", () => generatePDF(d));
   $("#tPrint")?.addEventListener("click", () => openPrintWindow(d));
+  $("#tReportar")?.addEventListener("click", () => abrirReporte(d));
 }
 
 /* Scrollspy: destaca a seção visível no índice */
@@ -1256,20 +1287,46 @@ function renderMapa(data, out) {
    ================================================================= */
 async function generateABNT(d, btn) {
   const original = btn ? btn.textContent : "";
-  if (btn) { btn.disabled = true; btn.textContent = "Gerando ABNT…"; }
+  const out = $("#abntOut", els.content);
+  if (btn) { btn.disabled = true; btn.textContent = "Formatando…"; }
+
   try {
     const data = await postProxy({ modo: "abnt", termo: d.nome, referencias: d.referencias || [] });
 
-    const texto = Array.isArray(data.abnt) ? data.abnt.join("\n\n") : String(data.abnt || "").trim();
+    const lista = Array.isArray(data.abnt) ? data.abnt.filter(Boolean).map(String) : [];
+    const texto = lista.length ? lista.join("\n\n") : String(data.abnt || "").trim();
     if (!texto) throw errWithCode("vazio", "VAZIO");
 
-    const copiou = await copyToClipboard(texto);
-    if (!copiou) throw errWithCode("clipboard", "COPIA");
+    // Mostrar antes de copiar. Copiar direto para a área de transferência
+    // levava uma citação possivelmente inexistente para dentro de um
+    // trabalho acadêmico sem ninguém nunca ter lido.
+    if (out) {
+      const itens = (lista.length ? lista : [texto]).map(r => {
+        const q = encodeURIComponent(r.slice(0, 300));
+        return `<li class="ref">
+          <span class="ref__txt">${escapeHTML(r)}</span>
+          <span class="ref__links">
+            <a href="https://scholar.google.com/scholar?q=${q}" target="_blank" rel="noopener noreferrer">Conferir</a>
+          </span>
+        </li>`;
+      }).join("");
+      out.innerHTML = `
+        <p class="abnt-out__aviso">
+          <b>Confira antes de colar no seu trabalho.</b> Citação inventada por IA costuma
+          ter formato impecável — autor plausível, revista real, ano coerente — e mesmo
+          assim não existir.
+        </p>
+        <ul class="refs refs--abnt">${itens}</ul>
+        <button class="abnt-copiar" id="btnAbntCopiar" type="button">Copiar tudo</button>`;
+      show(out);
+      $("#btnAbntCopiar", out)?.addEventListener("click", async () => {
+        toast(await copyToClipboard(texto) ? "Referências copiadas." : "Não foi possível copiar.");
+      });
+    }
 
-    toast("Referências copiadas em ABNT.");
-    if (btn) { btn.textContent = "✓ Copiado em ABNT"; setTimeout(() => { btn.disabled = false; btn.textContent = original; }, 2500); }
+    if (btn) { btn.disabled = false; btn.textContent = "Formatar de novo"; }
   } catch (e) {
-    toast("Não foi possível copiar agora. Tente novamente.");
+    toast("Não consegui formatar agora. Tente novamente em instantes.");
     if (btn) { btn.disabled = false; btn.textContent = original; }
   }
 }
@@ -2316,12 +2373,131 @@ function ligarEventosAnamnese() {
   });
 }
 
+
 /* =================================================================
-   17) INICIALIZAÇÃO
+   REPORTAR CONTEÚDO ERRADO
+   -----------------------------------------------------------------
+   Conteúdo gerado por IA erra — não é hipótese, é estatística. Sem um
+   caminho para relatar, quem encontra um erro só desconfia em silêncio,
+   e o erro continua aparecendo para os próximos.
+
+   Se CONFIG.REPORT_URL estiver configurado, o relato é enviado e pronto.
+   Sem isso, o site monta o texto e oferece cópia — imperfeito, mas
+   melhor que não ter para onde reclamar.
+   ================================================================= */
+const SECOES_REPORTE = [
+  "Definição", "Sintomas", "Diagnóstico", "Tratamento", "Complicações",
+  "Variações", "Diferenciais", "Epidemiologia", "Fisiopatologia", "Referências", "Outra parte",
+];
+
+let reporteFoco = null;
+
+function abrirReporte(d) {
+  reporteFoco = document.activeElement;
+  const m = $("#reporteModal");
+  $("#reporteFicha").textContent = d.nome || "esta ficha";
+  $("#reporteSecoes").innerHTML = SECOES_REPORTE.map(sec =>
+    `<button type="button" class="rep-chip" data-sec="${escapeHTML(sec)}" aria-pressed="false">${escapeHTML(sec)}</button>`).join("");
+  $("#reporteTexto").value = "";
+  hide($("#reporteSaida"));
+  show($("#reporteForm"));
+
+  $$(".rep-chip", m).forEach(b => b.addEventListener("click", () => {
+    b.classList.toggle("is-on");
+    b.setAttribute("aria-pressed", b.classList.contains("is-on"));
+  }));
+
+  show($("#reporteScrim"));
+  show(m);
+  document.addEventListener("keydown", teclasReporte, true);
+  requestAnimationFrame(() => $("#reporteTexto")?.focus());
+}
+
+function fecharReporte() {
+  if ($("#reporteModal").hidden) return;
+  hide($("#reporteModal"));
+  hide($("#reporteScrim"));
+  document.removeEventListener("keydown", teclasReporte, true);
+  if (reporteFoco && typeof reporteFoco.focus === "function") reporteFoco.focus();
+  reporteFoco = null;
+}
+
+function teclasReporte(e) {
+  const m = $("#reporteModal");
+  if (m.hidden) return;
+  if (e.key === "Escape") { e.stopPropagation(); fecharReporte(); return; }
+  if (e.key !== "Tab") return;
+  const foco = $$("button, textarea, a[href]", m).filter(el => !el.disabled && el.offsetParent !== null);
+  if (!foco.length) return;
+  const pri = foco[0], ult = foco[foco.length - 1];
+  if (!m.contains(document.activeElement)) { e.preventDefault(); pri.focus(); }
+  else if (e.shiftKey && document.activeElement === pri) { e.preventDefault(); ult.focus(); }
+  else if (!e.shiftKey && document.activeElement === ult) { e.preventDefault(); pri.focus(); }
+}
+
+function textoDoReporte() {
+  const secoes = $$(".rep-chip.is-on", $("#reporteModal")).map(b => b.dataset.sec);
+  const descricao = ($("#reporteTexto").value || "").trim();
+  return [
+    "Relato de erro — Invictus.Med",
+    `Ficha: ${currentData?.nome || "(sem nome)"}`,
+    secoes.length ? `Seções: ${secoes.join(", ")}` : "Seções: (não indicadas)",
+    descricao ? `O que está errado: ${descricao}` : "O que está errado: (não descrito)",
+    `Data: ${new Date().toLocaleString("pt-BR")}`,
+  ].join("\n");
+}
+
+async function enviarReporte() {
+  const btn = $("#reporteEnviar");
+  const texto = textoDoReporte();
+  btn.disabled = true;
+  btn.textContent = "Enviando…";
+
+  if (CONFIG.REPORT_URL) {
+    try {
+      const res = await fetchWithTimeout(CONFIG.REPORT_URL, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          ficha: currentData?.nome || "",
+          secoes: $$(".rep-chip.is-on", $("#reporteModal")).map(b => b.dataset.sec),
+          descricao: ($("#reporteTexto").value || "").trim().slice(0, 2000),
+        }),
+      });
+      if (res.ok) {
+        fecharReporte();
+        toast("Obrigado! Relato enviado.");
+        btn.disabled = false; btn.textContent = "Enviar relato";
+        return;
+      }
+    } catch { /* cai para a cópia manual */ }
+  }
+
+  // Sem servidor de relatos: entrega o texto pronto para a pessoa mandar.
+  hide($("#reporteForm"));
+  $("#reporteSaidaTexto").value = texto;
+  show($("#reporteSaida"));
+  btn.disabled = false;
+  btn.textContent = "Enviar relato";
+}
+
+function ligarEventosReporte() {
+  $("#reporteFechar")?.addEventListener("click", fecharReporte);
+  $("#reporteScrim")?.addEventListener("click", fecharReporte);
+  $("#reporteEnviar")?.addEventListener("click", enviarReporte);
+  $("#reporteCopiar")?.addEventListener("click", async () => {
+    toast(await copyToClipboard($("#reporteSaidaTexto").value)
+      ? "Relato copiado — é só colar na mensagem." : "Não foi possível copiar.");
+  });
+}
+
+/* =================================================================
+   18) INICIALIZAÇÃO
    ================================================================= */
 document.addEventListener("DOMContentLoaded", () => {
   initTheme();
   initVoice();
   bindGlobalEvents();
   ligarEventosAnamnese();
+  ligarEventosReporte();
 });
