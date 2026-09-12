@@ -852,6 +852,11 @@ function renderResult(d) {
         <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M11 5 4 12l7 7M4 12h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         Nova pesquisa
       </button>
+      <button class="btn-vista" id="btnVista" type="button" aria-pressed="false"
+              title="Reorganiza as mesmas seções na ordem do raciocínio clínico">
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 6h6M4 12h10M4 18h7M17 4v14M17 18l-3-3M17 18l3-3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Modo script
+      </button>
       <button class="btn-study" id="btnStudy" type="button">
         <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 5h7a3 3 0 0 1 3 3v11a2.5 2.5 0 0 0-2.5-2.5H4zM20 5h-7a3 3 0 0 0-3 3v11a2.5 2.5 0 0 1 2.5-2.5H20z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
         Estudar isto
@@ -892,6 +897,10 @@ function renderResult(d) {
   const toc = [{ id: "identificacao", label: "Identificação" }, ...sections,
     { id: "estudoCaso", label: "Estudo de caso" }];
   els.tocNav.innerHTML = toc.map(s => `<a href="#${s.id}">${escapeHTML(s.label)}</a>`).join("");
+
+  /* Guarda a ordem original: é o que permite voltar da vista de script */
+  $$(".card", els.content).forEach((c, i) => { c.dataset.ordem = String(i); });
+  if (vistaScript) aplicarVista();
 
   /* Animação de entrada */
   $$(".card, .fiche-head", els.content).forEach((el, i) => {
@@ -934,6 +943,7 @@ function bindResultEvents(d) {
 
   // Ações
   $("#btnNewSearch")?.addEventListener("click", resetToSearch);
+  $("#btnVista")?.addEventListener("click", alternarVista);
   $("#tFav")?.addEventListener("click", () => toggleFavorite(d));
   $("#tCopy")?.addEventListener("click", () => copyContent(d));
   $("#tShare")?.addEventListener("click", () => shareContent(d));
@@ -1210,6 +1220,7 @@ function renderQuiz(perguntas, out) {
       }).join("")}
     </ol>`;
 
+  quizInicio = Date.now();
   const scoreEl = $("#quizScore", out);
   $$(".quiz-alt", out).forEach(btn => {
     btn.addEventListener("click", () => {
@@ -1226,7 +1237,14 @@ function renderQuiz(perguntas, out) {
       const exp = $(".quiz-exp", li); if (exp) exp.hidden = false;
       respondidas++; if (escolhida === correta) acertos++;
       if (scoreEl) {
-        scoreEl.textContent = respondidas === total ? `Resultado: ${acertos} de ${total} ✓` : `Acertos: ${acertos} / ${total} · respondidas: ${respondidas}/${total}`;
+        if (respondidas === total) {
+          const tempo = quizInicio ? formatarTempo(Date.now() - quizInicio) : "";
+          const porQuestao = quizInicio ? formatarTempo((Date.now() - quizInicio) / total) : "";
+          scoreEl.textContent = `Resultado: ${acertos} de ${total}` +
+            (tempo ? ` · ${tempo} (${porQuestao} por questão)` : "");
+        } else {
+          scoreEl.textContent = `Acertos: ${acertos} / ${total} · respondidas: ${respondidas}/${total}`;
+        }
         if (respondidas === total) scoreEl.classList.add("quiz-score--done");
       }
     });
@@ -1354,40 +1372,154 @@ async function generateCase(d) {
   }
 }
 
+/* Converte qualquer valor (texto, objeto ou lista) em texto legível */
+function casoParaTexto(val) {
+  if (val == null) return "";
+  if (typeof val === "string") return val;
+  if (Array.isArray(val)) return val.map(casoParaTexto).filter(Boolean).join("; ");
+  if (typeof val === "object") {
+    return Object.entries(val)
+      .map(([k, v]) => {
+        const txt = casoParaTexto(v);
+        if (!txt) return "";
+        const rotulo = k.replace(/_/g, " ").replace(/^\w/, m => m.toUpperCase());
+        return `${rotulo}: ${txt}`;
+      })
+      .filter(Boolean).join(". ");
+  }
+  return String(val);
+}
+
+/* Guarda o caso aberto para a etapa de comparação */
+let casoAtual = null;
+
+/* O caso é apresentado em DUAS etapas.
+   Antes, a conduta esperada e a pergunta de raciocínio vinham juntas com o
+   enunciado: dava para ler a resposta sem nunca ter pensado, e ler resposta
+   pronta não treina raciocínio nenhum. Agora a pessoa precisa se comprometer
+   com uma hipótese primeiro — que é o mecanismo da reflexão deliberada. */
 function renderCase(c, out, d) {
-  // Converte qualquer valor (texto, objeto ou lista) em texto legível
-  const toText = (val) => {
-    if (val == null) return "";
-    if (typeof val === "string") return val;
-    if (Array.isArray(val)) return val.map(toText).filter(Boolean).join("; ");
-    if (typeof val === "object") {
-      return Object.entries(val)
-        .map(([k, v]) => {
-          const txt = toText(v);
-          if (!txt) return "";
-          const rotulo = k.replace(/_/g, " ").replace(/^\w/, m => m.toUpperCase());
-          return `${rotulo}: ${txt}`;
-        })
-        .filter(Boolean).join(". ");
-    }
-    return String(val);
-  };
+  casoAtual = { c, d };
   const row = (label, val) => {
-    const txt = toText(val);
+    const txt = casoParaTexto(val);
     return txt ? `<div class="case-row"><span class="case-row__lbl">${label}</span><p>${escapeHTML(txt)}</p></div>` : "";
   };
+
   out.innerHTML = `
-    ${c.titulo ? `<h3 class="case-title">${escapeHTML(toText(c.titulo))}</h3>` : ""}
+    ${c.titulo ? `<h3 class="case-title">${escapeHTML(casoParaTexto(c.titulo))}</h3>` : ""}
     ${row("Apresentação", c.apresentacao)}
     ${row("Queixa e história", c.queixa)}
     ${row("Antecedentes", c.antecedentes)}
     ${row("Exame físico", c.exame_fisico)}
     ${row("Exames complementares", c.exames_complementares)}
+
+    <section class="refl" id="reflBloco">
+      <p class="refl__t">Antes de ver a resposta</p>
+      <p class="refl__d">
+        Comprometa-se com uma hipótese. É esse passo que treina o raciocínio —
+        ler a conduta pronta, não.
+      </p>
+      <label class="refl__r" for="reflHip">Sua principal hipótese</label>
+      <input class="refl__input" id="reflHip" type="text" placeholder="Ex.: pancreatite aguda" />
+
+      <label class="refl__r" for="reflApoio">O que no caso sustenta isso?</label>
+      <textarea class="refl__input refl__input--area" id="reflApoio" rows="2"
+                placeholder="Os achados que te levaram até aí"></textarea>
+
+      <label class="refl__r" for="reflOutra">O que você não pode descartar?</label>
+      <input class="refl__input" id="reflOutra" type="text" placeholder="Um diferencial que segue em aberto" />
+
+      <button class="refl__btn" id="reflConfirmar" type="button">Confirmar e ver a resposta</button>
+      <button class="refl__pular" id="reflPular" type="button">Pular esta etapa</button>
+    </section>
+
+    <div id="caseResposta" hidden></div>`;
+
+  $("#reflConfirmar", out)?.addEventListener("click", () => revelarResposta(true));
+  $("#reflPular", out)?.addEventListener("click", () => revelarResposta(false));
+  $("#reflHip", out)?.addEventListener("keydown", e => {
+    if (e.key === "Enter") { e.preventDefault(); revelarResposta(true); }
+  });
+}
+
+function revelarResposta(comHipotese) {
+  const { c, d } = casoAtual || {};
+  if (!c) return;
+
+  const hip = ($("#reflHip")?.value || "").trim();
+  if (comHipotese && !hip) { toast("Escreva sua hipótese primeiro."); $("#reflHip")?.focus(); return; }
+
+  const apoio = ($("#reflApoio")?.value || "").trim();
+  const outra = ($("#reflOutra")?.value || "").trim();
+  casoAtual.resposta = { hip, apoio, outra };
+
+  const row = (label, val) => {
+    const txt = casoParaTexto(val);
+    return txt ? `<div class="case-row"><span class="case-row__lbl">${label}</span><p>${escapeHTML(txt)}</p></div>` : "";
+  };
+
+  hide($("#reflBloco"));
+  const out = $("#caseResposta");
+  out.innerHTML = `
+    ${hip ? `<div class="refl-sua">
+      <span class="refl-sua__lbl">Sua hipótese</span>
+      <p class="refl-sua__h">${escapeHTML(hip)}</p>
+      ${apoio ? `<p class="refl-sua__p"><b>Você apoiou em:</b> ${escapeHTML(apoio)}</p>` : ""}
+      ${outra ? `<p class="refl-sua__p"><b>Deixou em aberto:</b> ${escapeHTML(outra)}</p>` : ""}
+    </div>` : ""}
     ${row("Conduta esperada", c.conduta)}
-    ${c.pergunta_raciocinio ? `<div class="case-q"><span class="case-q__lbl">Para refletir</span><p>${escapeHTML(toText(c.pergunta_raciocinio))}</p></div>` : ""}
-    <button class="case-btn case-btn--again" id="btnCaseAgain" type="button">↻ Gerar outro caso</button>`;
-  const again = $("#btnCaseAgain", out);
-  if (again) again.addEventListener("click", () => generateCase(d));
+    ${c.pergunta_raciocinio ? `<div class="case-q"><span class="case-q__lbl">Para refletir</span><p>${escapeHTML(casoParaTexto(c.pergunta_raciocinio))}</p></div>` : ""}
+    <div class="case-acoes">
+      ${hip ? `<button class="case-btn case-btn--sec" id="btnComparar" type="button">Comparar meu raciocínio</button>` : ""}
+      <button class="case-btn case-btn--again" id="btnCaseAgain" type="button">Gerar outro caso</button>
+    </div>
+    <div id="compOut"></div>`;
+  show(out);
+
+  $("#btnCaseAgain", out)?.addEventListener("click", () => generateCase(d));
+  $("#btnComparar", out)?.addEventListener("click", compararRaciocinio);
+}
+
+/* Único ponto do caso em que a IA volta a ser útil: dar retorno sobre o
+   raciocínio de quem respondeu. Falha aqui não estraga nada — a resposta
+   esperada já está na tela. */
+async function compararRaciocinio() {
+  const btn = $("#btnComparar");
+  const out = $("#compOut");
+  const { c, resposta } = casoAtual || {};
+  if (!resposta || !out) return;
+
+  btn.disabled = true;
+  btn.textContent = "Comparando…";
+  out.innerHTML = `<div class="case-loading">Lendo seu raciocínio…</div>`;
+
+  try {
+    const dados = await postProxy({
+      modo: "comparar",
+      termo: currentData?.nome || "",
+      caso: [c.apresentacao, c.queixa, c.exame_fisico, c.exames_complementares].map(casoParaTexto).filter(Boolean).join(" "),
+      conduta: casoParaTexto(c.conduta),
+      hipotese: resposta.hip,
+      apoio: resposta.apoio,
+      outra: resposta.outra,
+    });
+
+    const pontos = Array.isArray(dados.pontos) ? dados.pontos : [];
+    const faltou = Array.isArray(dados.faltou) ? dados.faltou : [];
+    out.innerHTML = `
+      <div class="comp">
+        ${dados.veredito ? `<p class="comp__v">${escapeHTML(String(dados.veredito))}</p>` : ""}
+        ${pontos.length ? `<p class="comp__t">O que você acertou</p><ul class="bullets">${pontos.map(x => `<li>${escapeHTML(String(x))}</li>`).join("")}</ul>` : ""}
+        ${faltou.length ? `<p class="comp__t comp__t--faltou">O que faltou considerar</p><ul class="bullets">${faltou.map(x => `<li>${escapeHTML(String(x))}</li>`).join("")}</ul>` : ""}
+      </div>`;
+    btn.textContent = "Comparar de novo";
+  } catch (e) {
+    out.innerHTML = `<div class="case-err">Não consegui comparar agora — mas a resposta esperada está aí em cima.
+      <span class="case-err__code">cód. ${escapeHTML(codeOf(e) || "ERR")}</span></div>`;
+    btn.textContent = "Comparar meu raciocínio";
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 function dataToText(d) {
@@ -1820,6 +1952,7 @@ function bindGlobalEvents() {
   const studyBack = $("#studyBack");
   if (studyBack) studyBack.addEventListener("click", closeStudy);
   $$(".study-tool").forEach(b => b.addEventListener("click", () => generateStudy(b.dataset.modo)));
+  $("#studyDoHistorico")?.addEventListener("click", temaDoHistorico);
 }
 
 function updateSuggHighlight(items) {
@@ -2960,7 +3093,116 @@ function ligarEventosCalc() {
 }
 
 /* =================================================================
-   19) INICIALIZAÇÃO
+   MODO SCRIPT — a mesma ficha, na ordem do raciocínio clínico
+   -----------------------------------------------------------------
+   O raciocínio clínico se apoia em conhecimento organizado como
+   "scripts de doença": quem costuma ter, o que acontece no corpo, como
+   se apresenta, como confirmar, com o que se confunde. A ficha padrão
+   tem tudo isso, mas na ordem de um verbete.
+
+   Aqui não há chamada de IA nem conteúdo novo: é reordenação do que já
+   veio, com um rótulo que explica o papel de cada bloco.
+   ================================================================= */
+const ORDEM_SCRIPT = [
+  { id: "epidemiologia",  papel: "Quem costuma ter" },
+  { id: "fisiopatologia", papel: "O que acontece no corpo" },
+  { id: "sintomas",       papel: "Como se apresenta" },
+  { id: "diagnostico",    papel: "Como confirmar" },
+  { id: "diferenciais",   papel: "Com o que se confunde" },
+  { id: "variacoes",      papel: "Como varia" },
+  { id: "tratamento",     papel: "O que fazer" },
+  { id: "complicacoes",   papel: "O que temer" },
+  { id: "definicao",      papel: "Em uma frase" },
+  { id: "referencias",    papel: "De onde vem" },
+];
+
+let vistaScript = false;
+
+function alternarVista() {
+  vistaScript = !vistaScript;
+  const btn = $("#btnVista");
+  if (btn) {
+    btn.setAttribute("aria-pressed", String(vistaScript));
+    btn.classList.toggle("is-on", vistaScript);
+  }
+  aplicarVista();
+  toast(vistaScript ? "Ordem do raciocínio clínico." : "Ordem padrão da ficha.");
+}
+
+function aplicarVista() {
+  const cards = $$(".card", els.content).filter(c => c.id && c.id !== "estudoCaso");
+  if (!cards.length) return;
+  const mapa = new Map(cards.map(c => [c.id, c]));
+  const pai = els.content;
+  const caso = $("#estudoCaso", pai);
+
+  if (!vistaScript) {
+    // Volta à ordem em que as seções foram criadas
+    cards.sort((a, b) => Number(a.dataset.ordem || 0) - Number(b.dataset.ordem || 0))
+      .forEach(c => { pai.insertBefore(c, caso); limparPapel(c); });
+    return;
+  }
+
+  for (const { id, papel } of ORDEM_SCRIPT) {
+    const card = mapa.get(id);
+    if (!card) continue;
+    pai.insertBefore(card, caso);
+    marcarPapel(card, papel);
+  }
+  // Qualquer seção não prevista vai para o fim, sem sumir
+  cards.filter(c => !ORDEM_SCRIPT.some(o => o.id === c.id))
+    .forEach(c => pai.insertBefore(c, caso));
+}
+
+function marcarPapel(card, papel) {
+  limparPapel(card);
+  const head = $(".card__head", card);
+  if (!head) return;
+  const tag = document.createElement("span");
+  tag.className = "card__papel";
+  tag.textContent = papel;
+  head.appendChild(tag);
+}
+
+function limparPapel(card) {
+  $(".card__papel", card)?.remove();
+}
+
+/* =================================================================
+   ESTUDAR O QUE JÁ FOI PESQUISADO
+   -----------------------------------------------------------------
+   Bancos de questões concorrentes têm centenas de milhares de itens —
+   competir em volume é perder. O que eles não fazem é gerar questão
+   sobre exatamente o que VOCÊ pesquisou esta semana.
+
+   E isso não exigiu mudar o servidor: o "tema" sempre foi texto livre,
+   então uma lista de termos separados por vírgula já funciona.
+   ================================================================= */
+function temaDoHistorico() {
+  const recentes = readList(HKEY).slice(0, 5).map(x => x.nome);
+  if (!recentes.length) {
+    toast("Pesquise alguma coisa primeiro — aí eu misturo daqui.");
+    return;
+  }
+  const escolhidos = recentes.slice(0, 4);
+  els.studyTema.value = escolhidos.join(", ");
+  els.studyTema.focus();
+  toast(escolhidos.length === 1
+    ? "Tema preenchido com sua última busca."
+    : `Misturei ${escolhidos.length} temas do seu histórico.`);
+}
+
+/* Cronômetro do quiz. Não é para pressionar: é para você saber quanto
+   tempo leva por questão, que é o que decide prova objetiva. */
+let quizInicio = null;
+
+function formatarTempo(ms) {
+  const s = Math.max(0, Math.round(ms / 1000));
+  return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+}
+
+/* =================================================================
+   20) INICIALIZAÇÃO
    ================================================================= */
 document.addEventListener("DOMContentLoaded", () => {
   initTheme();

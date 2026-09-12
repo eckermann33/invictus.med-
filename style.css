@@ -1397,3 +1397,121 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 0 clamp(16px, 4vw, 40px)
   .brand__name { display: none; }
   .brand { gap: 0; }
 }
+
+/* =================================================================
+   APRENDIZADO — reflexão deliberada, modo script, quiz do histórico
+   ================================================================= */
+
+/* Bloco de compromisso: aparece ANTES da resposta, e é o ponto da coisa */
+.refl {
+  margin-top: 20px; padding: 20px 22px;
+  border-radius: var(--r);
+  background: color-mix(in srgb, var(--blue) 7%, transparent);
+  border: 1px solid color-mix(in srgb, var(--blue) 32%, transparent);
+}
+.refl__t { font-family: var(--font-display); font-weight: 600; font-size: 1rem; margin-bottom: 4px; }
+.refl__d { color: var(--text-mut); font-size: 0.87rem; line-height: 1.5; margin-bottom: 18px; }
+.refl__r { display: block; font-size: 0.84rem; font-weight: 600; color: var(--text-soft); margin: 14px 0 6px; }
+.refl__input {
+  width: 100%; padding: 11px 14px; min-height: 44px;
+  border-radius: var(--r-sm);
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--glass-brd);
+  font-family: var(--font-body); font-size: 0.95rem;
+  transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease);
+}
+.refl__input:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--blue) 55%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 15%, transparent);
+}
+.refl__input--area { resize: vertical; line-height: 1.55; }
+.refl__btn {
+  margin-top: 18px; padding: 0 22px; height: 46px;
+  border-radius: 999px; border: none;
+  background: var(--blue); color: #fff;
+  font-family: var(--font-display); font-weight: 500; font-size: 0.92rem;
+  transition: background 0.2s var(--ease);
+}
+.refl__btn:hover { background: var(--blue-bright); }
+.refl__pular {
+  margin-left: 12px; background: none; border: none; padding: 10px 6px;
+  color: var(--text-mut); font-size: 0.85rem; text-decoration: underline;
+  transition: color 0.2s var(--ease);
+}
+.refl__pular:hover { color: var(--text-soft); }
+
+/* A hipótese da pessoa fica ao lado da resposta, para comparar */
+.refl-sua {
+  margin: 4px 0 18px; padding: 16px 18px;
+  border-radius: var(--r-sm);
+  background: var(--panel-alto, var(--bg-deep));
+  border-left: 3px solid var(--blue);
+}
+.refl-sua__lbl {
+  font-size: 0.74rem; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-mut);
+}
+.refl-sua__h { font-family: var(--font-display); font-weight: 600; font-size: 1.05rem; margin-top: 5px; }
+.refl-sua__p { color: var(--text-soft); font-size: 0.87rem; margin-top: 7px; line-height: 1.5; }
+.refl-sua__p b { color: var(--text-mut); font-weight: 500; }
+
+.case-acoes { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+.case-btn--sec {
+  background: transparent; border: 1px solid var(--glass-brd); color: var(--text-soft);
+}
+.case-btn--sec:hover { color: var(--text); border-color: color-mix(in srgb, var(--blue) 45%, transparent); }
+
+/* Retorno sobre o raciocínio */
+.comp {
+  margin-top: 18px; padding: 18px 20px;
+  border-radius: var(--r); background: var(--panel-alto, var(--bg-deep));
+}
+.comp__v { font-size: 0.97rem; line-height: 1.55; margin-bottom: 14px; }
+.comp__t {
+  font-size: 0.8rem; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--green); margin: 14px 0 8px;
+}
+.comp__t--faltou { color: var(--amber); }
+
+/* Modo script: rótulo do papel de cada seção */
+.btn-vista {
+  display: inline-flex; align-items: center; gap: 7px; margin-left: 10px;
+  padding: 9px 16px; min-height: 40px; border-radius: 999px;
+  background: transparent; border: 1px solid var(--glass-brd);
+  color: var(--text-soft);
+  font-family: var(--font-display); font-weight: 500; font-size: 0.85rem;
+  transition: color 0.2s var(--ease), border-color 0.2s var(--ease), background 0.2s var(--ease);
+}
+.btn-vista:hover { color: var(--text); }
+.btn-vista.is-on {
+  background: color-mix(in srgb, var(--blue) 14%, transparent);
+  border-color: color-mix(in srgb, var(--blue) 50%, transparent);
+  color: var(--blue-bright);
+}
+.card__papel {
+  margin-left: auto; flex-shrink: 0;
+  font-size: 0.74rem; letter-spacing: 0.04em;
+  padding: 4px 11px; border-radius: 999px;
+  background: color-mix(in srgb, var(--blue) 13%, transparent);
+  color: var(--blue-bright);
+}
+
+/* Quiz a partir do histórico */
+.study__bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.study__bar .study__input { flex: 1; min-width: 220px; }
+.study__hist {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 0 18px; height: 46px; min-height: 44px; border-radius: var(--r-sm);
+  background: transparent; border: 1px solid var(--glass-brd);
+  color: var(--text-soft); font-size: 0.87rem; white-space: nowrap;
+  transition: color 0.2s var(--ease), border-color 0.2s var(--ease);
+}
+.study__hist:hover { color: var(--text); border-color: color-mix(in srgb, var(--blue) 45%, transparent); }
+
+@media (max-width: 560px) {
+  .card__papel { margin-left: 0; }
+  .card__head { flex-wrap: wrap; }
+  .refl__pular { display: block; margin: 10px 0 0; }
+  .study__hist { width: 100%; justify-content: center; }
+}

@@ -107,6 +107,15 @@ export default {
         return json({ erro: "Falha ao organizar.", codigo: `ANAMNESE:${r.codigo}` }, 503, cors);
       }
 
+      /* ---- Comparar o raciocínio de quem respondeu ao caso ---- */
+      if (modo === "comparar") {
+        const key = env.LLM_KEY || env.LLM_KEY_2;
+        if (!key) return json({ erro: "Sem chave.", codigo: "COMPARAR:sem-chave" }, 503, cors);
+        const r = await chamar(CASE, url, key, promptComparar(body), MAX_TOKENS.padrao);
+        if (r.ok) return json(r.dados, 200, cors);
+        return json({ erro: "Falha ao comparar.", codigo: `COMPARAR:${r.codigo}` }, 503, cors);
+      }
+
       /* ---- Estudo de caso e referências em ABNT ---- */
       if (modo === "caso" || modo === "abnt") {
         const key = env.LLM_KEY || env.LLM_KEY_2;
@@ -292,6 +301,31 @@ REGRAS ABSOLUTAS — o texto vira registro clínico, e informação inventada é
 - Pode: organizar a ordem dos fatos, trocar termo leigo pelo equivalente técnico quando for
   inequívoco (ex.: "dor no peito" → "dor torácica"), ligar as frases e remover repetição.
 - Mantenha entre 1 e 3 parágrafos. Não use listas nem marcadores.`;
+}
+
+/* Retorno sobre o raciocínio de um estudante. Corrigir é diferente de julgar:
+   o objetivo é apontar o que sustentou e o que faltou considerar, não dar nota. */
+function promptComparar(corpo) {
+  return `Você é um preceptor dando retorno a um estudante de medicina que acabou de
+resolver um caso clínico.
+
+Caso apresentado: ${String(corpo.caso || "").slice(0, 2000)}
+Conduta esperada: ${String(corpo.conduta || "").slice(0, 1000)}
+
+O estudante respondeu:
+- Hipótese principal: ${String(corpo.hipotese || "").slice(0, 500)}
+- Justificou com: ${String(corpo.apoio || "(não justificou)").slice(0, 800)}
+- Deixou em aberto: ${String(corpo.outra || "(não citou)").slice(0, 500)}
+
+${REGRA_JSON}
+Formato: { "veredito": "2 a 3 frases", "pontos": ["o que o estudante acertou"], "faltou": ["o que deixou de considerar"] }
+
+REGRAS:
+- Comece reconhecendo o que o raciocínio tem de correto, mesmo que a hipótese esteja errada.
+- Se a hipótese estiver errada, diga com clareza — retorno vago não ensina.
+- Aponte no máximo 3 itens em cada lista, os mais importantes.
+- Fale do RACIOCÍNIO (quais achados sustentam o quê), não só do rótulo diagnóstico.
+- Não invente achado que não está no caso. Não dê nota nem porcentagem.`;
 }
 
 function promptFicha(termo) {
