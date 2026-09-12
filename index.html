@@ -39,7 +39,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
 
-  <link rel="stylesheet" href="style.css?v=15" />
+  <link rel="stylesheet" href="style.css?v=16" />
 </head>
 <body>
 
@@ -75,6 +75,10 @@
       <button class="icon-btn icon-btn--destaque" id="btnAnamnese" type="button" aria-label="Montar uma anamnese estruturada">
         <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M8 4h8a1 1 0 0 1 1 1v1h2a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h2V5a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 12h6M9 16h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
         <span class="icon-btn__label">Anamnese</span>
+      </button>
+      <button class="icon-btn" id="btnCalc" type="button" aria-label="Calculadoras e escores clínicos">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 7h8M8 12h2M12 12h.01M16 12h.01M8 16h2M12 16h.01M16 16h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <span class="icon-btn__label">Escores</span>
       </button>
       <button class="icon-btn" id="btnTheme" type="button" aria-label="Alternar tema claro/escuro">
         <svg class="icon-sun" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2v2.5M12 19.5V22M4.2 4.2l1.8 1.8M18 18l1.8 1.8M2 12h2.5M19.5 12H22M4.2 19.8 6 18M18 6l1.8-1.8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
@@ -129,18 +133,31 @@
           </button>
         </div>
 
-        <!-- Segunda ferramenta do site: precisa de porta própria, não só
-             de um ícone no cabeçalho -->
-        <button class="acao-card" id="btnAnamneseHero" type="button">
-          <span class="acao-card__ico" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="22" height="22"><path d="M8 4h8a1 1 0 0 1 1 1v1h2a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h2V5a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 12h6M9 16h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-          </span>
-          <span class="acao-card__txt">
-            <span class="acao-card__t">Montar uma anamnese</span>
-            <span class="acao-card__d">Roteiro guiado, quase só com cliques. No fim, o texto pronto para copiar.</span>
-          </span>
-          <svg class="acao-card__seta" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </button>
+        <!-- As duas outras ferramentas do site. Ícone no cabeçalho não é
+             descoberta: cada uma precisa de porta própria. -->
+        <div class="acoes">
+          <button class="acao-card" id="btnAnamneseHero" type="button">
+            <span class="acao-card__ico" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="22" height="22"><path d="M8 4h8a1 1 0 0 1 1 1v1h2a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h2V5a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 12h6M9 16h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            </span>
+            <span class="acao-card__txt">
+              <span class="acao-card__t">Montar uma anamnese</span>
+              <span class="acao-card__d">Roteiro guiado, quase só com cliques. No fim, o texto pronto para copiar.</span>
+            </span>
+            <svg class="acao-card__seta" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+
+          <button class="acao-card" id="btnCalcHero" type="button">
+            <span class="acao-card__ico" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="22" height="22"><rect x="4" y="3" width="16" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 7h8M8 12h2M12 12h.01M16 12h.01M8 16h2M12 16h.01M16 16h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            </span>
+            <span class="acao-card__txt">
+              <span class="acao-card__t">Calculadoras e escores</span>
+              <span class="acao-card__d">CHA₂DS₂-VASc, Wells, CURB-65, Glasgow e mais. Sem IA, resultado na hora.</span>
+            </span>
+            <svg class="acao-card__seta" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
 
         <!-- Exemplos rápidos -->
         <div class="chips" aria-label="Exemplos de busca">
@@ -230,6 +247,22 @@
         <b>Não identifique o paciente.</b> Use iniciais, nunca nome completo, CPF ou número de
         prontuário. O rascunho fica salvo só neste navegador — use "Limpar tudo" ao terminar.
       </p>
+    </section>
+
+    <!-- ===================== CALCULADORAS E ESCORES ===================== -->
+    <section class="calc" id="calcView" hidden>
+      <div class="calc__head">
+        <button class="study__back" id="calcVoltarInicio" type="button">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Voltar
+        </button>
+        <h2 class="calc__titulo">Calculadoras e escores</h2>
+      </div>
+      <div class="calc__busca" id="calcBusca">
+        <input id="calcFiltro" class="calc__filtro" type="search" placeholder="Filtrar por nome ou especialidade…" aria-label="Filtrar escores" />
+      </div>
+      <div id="calcLista"></div>
+      <div id="calcDetalhe" hidden></div>
     </section>
 
     <!-- ===================== ESTADO INICIAL / VAZIO ===================== -->
@@ -339,6 +372,6 @@
        Sobre travar a versão com SRI (integrity), veja o README. -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"
           crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
-  <script src="script.js?v=15" defer></script>
+  <script src="script.js?v=16" defer></script>
 </body>
 </html>
