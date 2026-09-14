@@ -115,6 +115,14 @@ suportar. Tema claro e escuro, que segue a preferência do sistema até você es
 uma. Exportação em PDF e uma versão limpa para impressão. E um botão que formata as
 referências em ABNT — mostrando cada uma antes de você copiar.
 
+Cada ficha tem endereço próprio: o `?q=` na barra é o link para mandar no grupo da
+turma. Quem abrir recebe a ficha do momento, não uma cópia congelada — e o botão
+voltar do navegador anda entre as fichas em vez de sair do site.
+
+Para quem estuda em caderno digital, o botão Markdown copia a ficha pronta para o
+Obsidian: cabeçalho YAML com CID e especialidade, sinônimos como *aliases* e os
+diagnósticos diferenciais já em `[[links internos]]`.
+
 No rodapé tem um "Aprovado por Dr. House". Passe o mouse em cima.
 
 ## Sobre o conteúdo

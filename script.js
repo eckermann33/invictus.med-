@@ -349,7 +349,8 @@ function startThinking() {
 function stopThinking() { clearInterval(thinkingTimer); thinkingTimer = null; }
 
 /* Volta para a tela de busca para fazer outra pergunta */
-function resetToSearch() {
+function resetToSearch({ substituirEndereco = false } = {}) {
+  marcarNoEndereco("", substituirEndereco);
   if (activeSearch) { activeSearch.abort(); activeSearch = null; }
   searchSeq++;                 // invalida qualquer resposta ainda a caminho
   setBusy(false);
@@ -380,7 +381,7 @@ function setBusy(busy) {
   if (els.loader) els.loader.setAttribute("aria-busy", busy ? "true" : "false");
 }
 
-async function analyze(termRaw) {
+async function analyze(termRaw, { substituirEndereco = false } = {}) {
   const term = (termRaw ?? els.input.value).trim().slice(0, CONFIG.MAX_TERM_LEN);
   if (!term) { els.input.focus(); return; }
 
@@ -410,6 +411,7 @@ async function analyze(termRaw) {
     currentData = data;
     renderResult(data);
     addToHistory(data.nome || term);
+    marcarNoEndereco(data.nome || term, substituirEndereco);
     stopThinking();
     hide(els.loader);
     show(els.results);
@@ -422,6 +424,34 @@ async function analyze(termRaw) {
   } finally {
     if (seq === searchSeq) { setBusy(false); activeSearch = null; }
   }
+}
+
+/* ---------- O endereço acompanha a ficha aberta ----------
+   Sem isto, o site tem um endereço só: recarregar perde a ficha, o botão
+   voltar sai do site e não dá para mandar uma condição específica para
+   alguém. Com ?q=, o endereço na barra já é o link compartilhável. */
+
+function marcarNoEndereco(termo, substituir = false) {
+  if (!window.history?.pushState) return;
+  const u = new URL(location.href);
+  u.search = termo ? "?q=" + encodeURIComponent(termo) : "";
+  if (u.toString() === location.href) return;
+  const estado = { q: termo || "" };
+  // Trocar de ficha é navegar: merece uma entrada, para o voltar funcionar.
+  // Chegar pelo botão voltar ou por um link colado, não — nesses casos a
+  // entrada já existe e empilhar outra faria o voltar andar em círculos.
+  if (substituir) history.replaceState(estado, "", u.toString());
+  else history.pushState(estado, "", u.toString());
+}
+
+/* Abre a ficha pedida no endereço, se houver. */
+function abrirPeloEndereco() {
+  const termo = new URLSearchParams(location.search).get("q");
+  const limpo = (termo || "").trim().slice(0, CONFIG.MAX_TERM_LEN);
+  if (!limpo) return false;
+  if (els.input) els.input.value = limpo;
+  analyze(limpo, { substituirEndereco: true });
+  return true;
 }
 
 function showError(err) {
@@ -715,6 +745,7 @@ function renderResult(d) {
           <svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 17.3 6.2 20.5l1.1-6.5L2.6 9.4l6.5-.9L12 2.6l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
           <span>${isFav ? "Favoritado" : "Favoritar"}</span></button>
         <button class="tool" id="tCopy" type="button"><svg viewBox="0 0 24 24" width="16" height="16"><rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10" fill="none" stroke="currentColor" stroke-width="2"/></svg><span>Copiar</span></button>
+        <button class="tool" id="tMarkdown" type="button" title="Copia em Markdown, pronto para colar no Obsidian ou no Notion"><svg viewBox="0 0 24 24" width="16" height="16"><rect x="2" y="5" width="20" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M6 15V9l3 3 3-3v6M17 9v4m0 0 2-2m-2 2-2-2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Markdown</span></button>
         <button class="tool" id="tShare" type="button"><svg viewBox="0 0 24 24" width="16" height="16"><circle cx="18" cy="5" r="3" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="6" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="19" r="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4" stroke="currentColor" stroke-width="2"/></svg><span>Compartilhar</span></button>
         <button class="tool" id="tPdf" type="button"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 9V3h9l3 3v3M6 18v3h12v-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><rect x="4" y="9" width="16" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="2"/></svg><span>PDF</span></button>
         <button class="tool tool--reportar" id="tReportar" type="button"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 8v5M12 16h.01M10.3 3.9 2.5 18a1.8 1.8 0 0 0 1.6 2.7h15.8a1.8 1.8 0 0 0 1.6-2.7L13.7 3.9a1.8 1.8 0 0 0-3.4 0z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Reportar erro</span></button>
@@ -785,10 +816,11 @@ function bindResultEvents(d) {
   });
 
   // Ações
-  $("#btnNewSearch")?.addEventListener("click", resetToSearch);
+  $("#btnNewSearch")?.addEventListener("click", () => resetToSearch());
   $("#btnVista")?.addEventListener("click", alternarVista);
   $("#tFav")?.addEventListener("click", () => toggleFavorite(d));
   $("#tCopy")?.addEventListener("click", () => copyContent(d));
+  $("#tMarkdown")?.addEventListener("click", () => copyMarkdown(d));
   $("#tShare")?.addEventListener("click", () => shareContent(d));
   $("#tPdf")?.addEventListener("click", () => generatePDF(d));
   $("#tPrint")?.addEventListener("click", () => openPrintWindow(d));
@@ -1417,16 +1449,117 @@ async function copyContent(d) {
   toast(await copyToClipboard(dataToText(d)) ? "Conteúdo copiado." : "Não foi possível copiar.");
 }
 
+/* Link para a ficha. Não guarda o conteúdo, só o termo: quem abrir recebe
+   a versão do momento em vez de uma cópia congelada de meses atrás — e o
+   link cabe numa mensagem, ao contrário da ficha inteira. */
+function linkDaFicha(d) {
+  const u = new URL(location.href);
+  u.hash = "";
+  u.search = "?q=" + encodeURIComponent(d.nome || "");
+  return u.toString();
+}
+
 async function shareContent(d) {
-  const text = dataToText(d);
+  const url = linkDaFicha(d);
+  const titulo = `Invictus.Med — ${d.nome || "ficha"}`;
   if (navigator.share) {
-    try { await navigator.share({ title: `Invictus.Med — ${d.nome}`, text }); return; }
+    try { await navigator.share({ title: titulo, text: d.nome || "", url }); return; }
     catch (e) {
       if (e && e.name === "AbortError") return;   // o usuário só fechou o menu
       /* sem suporte de fato → cai para a cópia */
     }
   }
-  toast(await copyToClipboard(text) ? "Copiado para compartilhar." : "Compartilhamento indisponível.");
+  toast(await copyToClipboard(url) ? "Link copiado." : "Compartilhamento indisponível.");
+}
+
+/* ---------- Markdown (Obsidian, Notion, Logseq) ----------
+   Quem estuda com caderno digital não quer o texto corrido: quer títulos
+   que viram sumário, listas que viram checklist e o cabeçalho YAML que o
+   Obsidian usa para indexar por especialidade e CID. */
+function dataToMarkdown(d) {
+  const L = [];
+  const lim = v => String(v ?? "").replace(/\r?\n+/g, " ").trim();
+  const yamlLista = a => (a || []).filter(Boolean).map(x => `  - ${JSON.stringify(lim(x))}`);
+  const sec = (titulo, corpo) => { if (corpo && corpo.length) { L.push(`## ${titulo}`, "", ...[].concat(corpo), ""); } };
+  const itens = a => (a || []).filter(Boolean).map(x => `- ${lim(x)}`);
+  const par = t => (t && String(t).trim()) ? [String(t).trim()] : [];
+
+  // Cabeçalho YAML — é o que torna a nota pesquisável no cofre.
+  const meta = ["---", `titulo: ${JSON.stringify(lim(d.nome) || "Ficha")}`];
+  if (d.cid10) meta.push(`cid10: ${JSON.stringify(lim(d.cid10))}`);
+  if (d.cid11) meta.push(`cid11: ${JSON.stringify(lim(d.cid11))}`);
+  if (d.area_medica) meta.push(`area: ${JSON.stringify(lim(d.area_medica))}`);
+  if (d.sinonimos?.length) meta.push("aliases:", ...yamlLista(d.sinonimos));
+  meta.push("tags:", `  - ${d.tipo === "farmaco" ? "farmaco" : "doenca"}`, "  - invictus-med");
+  meta.push(`fonte: ${JSON.stringify(linkDaFicha(d))}`, "---", "");
+  L.push(...meta, `# ${lim(d.nome) || "Ficha"}`, "");
+
+  if (d.tipo === "farmaco" && d.farmaco) {
+    const f = d.farmaco;
+    const ficha = [];
+    if (f.principio_ativo) ficha.push(`**Princípio ativo:** ${lim(f.principio_ativo)}`);
+    if (f.classe) ficha.push(`**Classe:** ${lim(f.classe)}`);
+    if (ficha.length) L.push(ficha.join("  \n"), "");
+    sec("Para que serve", par(f.para_que_serve));
+    sec("Doenças tratadas", itens(f.doencas_tratadas));
+    sec("Mecanismo (simples)", par(f.mecanismo_simples));
+    sec("Mecanismo (avançado)", par(f.mecanismo_avancado));
+    sec("Efeitos adversos comuns", itens(f.efeitos_adversos_comuns));
+    sec("⚠️ Efeitos adversos graves", itens(f.efeitos_adversos_graves));
+    sec("Contraindicações", itens(f.contraindicacoes));
+    sec("Interações", itens(f.interacoes));
+  } else {
+    const cab = [];
+    if (d.cid10) cab.push(`**CID-10:** ${lim(d.cid10)}${d.cid11 ? ` · **CID-11:** ${lim(d.cid11)}` : ""}`);
+    if (d.area_medica) cab.push(`**Área médica:** ${lim(d.area_medica)}`);
+    if (cab.length) L.push(cab.join("  \n"), "");
+    sec("Definição", par(d.definicao));
+    sec("Sintomas comuns", itens(d.sintomas_comuns));
+    sec("Sintomas incomuns", itens(d.sintomas_raros));
+    sec("⚠️ Sinais de alerta", itens(d.sinais_alerta));
+
+    const t = d.tratamento || {};
+    const trat = [];
+    if (t.padrao?.length) trat.push("### Padrão", "", ...itens(t.padrao), "");
+    if (t.medicamentos?.length) trat.push("### Medicamentos", "", ...itens(t.medicamentos), "");
+    if (t.complementares?.length) trat.push("### Complementares", "", ...itens(t.complementares), "");
+    if (t.prognostico) trat.push(`**Prognóstico:** ${lim(t.prognostico)}`, "");
+    if (trat.length) L.push("## Tratamento", "", ...trat);
+
+    sec("Complicações", itens(d.complicacoes));
+    // Diferenciais viram links internos: no Obsidian, abrem a nota da outra
+    // condição se ela existir, e ficam disponíveis para criar se não.
+    sec("Diagnósticos diferenciais",
+        (d.diferenciais || []).filter(Boolean).map(x => `- [[${lim(x)}]]`));
+    const variacoes = (d.variacoes || []).filter(v => v && v.nome).map(v => {
+      const p = [`### ${lim(v.nome)}`, ""];
+      if (v.gravidade) p.push(`**Gravidade:** ${lim(v.gravidade)}`, "");
+      if (v.definicao) p.push(lim(v.definicao), "");
+      if (v.tratamento) p.push(`**Tratamento:** ${lim(v.tratamento)}`, "");
+      return p.join("\n");
+    });
+    if (variacoes.length) L.push("## Variações e subtipos", "", ...variacoes, "");
+
+    const fp = d.fisiopatologia || {};
+    sec("Fisiopatologia (simples)", par(fp.simples));
+    sec("Fisiopatologia (avançada)", par(fp.avancada));
+    const ep = d.epidemiologia || {};
+    const linhasEp = Object.entries({
+      "Prevalência": ep.prevalencia, "Faixa etária": ep.faixa_etaria,
+      "Sexo": ep.sexo, "Distribuição geográfica": ep.distribuicao_geografica,
+    }).filter(([, v]) => v && String(v).trim()).map(([k, v]) => `- **${k}:** ${lim(v)}`);
+    sec("Epidemiologia", linhasEp);
+  }
+
+  sec("Referências", itens(d.referencias));
+  L.push("---", "", "Gerado por Invictus.Med. Conteúdo educacional produzido por IA:",
+         "confira nas fontes antes de usar em decisão clínica.", "");
+  return L.join("\n");
+}
+
+async function copyMarkdown(d) {
+  toast(await copyToClipboard(dataToMarkdown(d))
+    ? "Markdown copiado — é só colar no Obsidian." : "Não foi possível copiar.");
 }
 
 /* =================================================================
@@ -2999,4 +3132,9 @@ document.addEventListener("DOMContentLoaded", () => {
   ligarEventosAnamnese();
   ligarEventosReporte();
   ligarEventosCalc();
+  abrirPeloEndereco();
+  // Voltar/avançar do navegador acompanham a ficha em vez de sair do site.
+  window.addEventListener("popstate", () => {
+    if (!abrirPeloEndereco()) resetToSearch({ substituirEndereco: true });
+  });
 });
