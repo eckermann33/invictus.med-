@@ -35,8 +35,10 @@
   --shadow-sm:   0 2px 10px -6px rgba(0, 0, 0, 0.6);
 
   /* Tipografia — uma família só, pesos controlados */
-  --font-display: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-body:    "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* A fonte do sistema é o que aparece até a Inter chegar — e em muitos
+     aparelhos ela nunca chega. Vale ser uma pilha decente, não um fallback. */
+  --font-display: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-body:    "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono:    "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
   /* Forma */
@@ -63,7 +65,10 @@
   --hairline:    rgba(0, 0, 0, 0.07);
   --text:        #10120F;
   --text-soft:   #45514C;
-  --text-mut:    #6E7B76;
+  /* O tom anterior (#6E7B76) ficava entre 4,00:1 e 4,41:1 conforme a
+     superfície — abaixo do mínimo de 4,5:1 da WCAG para texto normal.
+     Este não desce de 5,04:1 em nenhuma delas. */
+  --text-mut:    #5E6B66;
   --blue:        #05865C;
   --blue-bright: #0A9E6E;
   --cyan:        #0E9F6E;

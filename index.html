@@ -34,12 +34,22 @@
     })();
   </script>
 
-  <!-- Tipografia (fontes web; o site continua funcional com fontes do sistema caso não carreguem) -->
+  <!-- Tipografia.
+       A folha do Google Fonts NÃO pode bloquear a renderização: medido com o
+       domínio pendurado por 12s (wi-fi de hospital, portal cativo), a primeira
+       pintura saía em ~12,2s; sem bloquear, sai em ~140ms.
+       O truque do media="print" faz o navegador baixar sem bloquear e a folha
+       passa a valer no onload. Até lá, o texto aparece na fonte do sistema. -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" media="print" onload="this.media='all'; this.onload=null;"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" />
+  <noscript>
+    <link rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" />
+  </noscript>
 
-  <link rel="stylesheet" href="style.css?v=17" />
+  <link rel="stylesheet" href="style.css?v=18" />
 </head>
 <body>
 
@@ -209,7 +219,7 @@
         <h2 class="study__title">Estudar</h2>
       </div>
       <div class="study__bar">
-        <input id="studyTema" class="study__input" type="text" placeholder="Tema para estudar (ex.: Insuficiência cardíaca)…" />
+        <input id="studyTema" class="study__input" type="text" aria-label="Tema para estudar" placeholder="Tema para estudar (ex.: Insuficiência cardíaca)…" />
         <button class="study__hist" id="studyDoHistorico" type="button"
                 title="Monta um tema misto com o que você pesquisou recentemente">
           <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 8v5l3 3M3.05 11a9 9 0 1 1 .5 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 4v4h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -365,7 +375,7 @@
         abaixo e me mande no
         <a class="link-btn" href="https://www.instagram.com/_eckermann" target="_blank" rel="noopener noreferrer">Instagram</a>.
       </p>
-      <textarea class="modal__input modal__input--area" id="reporteSaidaTexto" rows="7" readonly></textarea>
+      <textarea class="modal__input modal__input--area" id="reporteSaidaTexto" rows="7" readonly aria-label="Texto do relato, pronto para copiar"></textarea>
       <button class="btn btn--primary modal__btn" id="reporteCopiar" type="button">Copiar relato</button>
     </div>
   </div>
@@ -377,6 +387,6 @@
        Sobre travar a versão com SRI (integrity), veja o README. -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"
           crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
-  <script src="script.js?v=17" defer></script>
+  <script src="script.js?v=18" defer></script>
 </body>
 </html>
