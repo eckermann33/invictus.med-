@@ -616,7 +616,6 @@ function buildSections(d) {
     if (has(t.medicamentos) || has(t.padrao)) {
       h += `<div class="poso-bloco">
         <button class="poso-btn" id="btnPosologia" type="button">Ver doses usuais</button>
-        <p class="poso-btn__nota">Doses de adulto, para estudo. Sempre confira na bula e no protocolo do serviço.</p>
         <div class="poso-out" id="posoOut" hidden></div>
       </div>`;
     }
@@ -1603,15 +1602,6 @@ async function gerarPosologia(d, btn) {
 
     if (out) {
       out.innerHTML = `
-        <div class="poso-aviso">
-          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 8v5M12 16h.01M10.3 3.9 2.5 18a1.8 1.8 0 0 0 1.6 2.7h15.8a1.8 1.8 0 0 0 1.6-2.7L13.7 3.9a1.8 1.8 0 0 0-3.4 0z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          <div>
-            <b>Isto foi gerado por IA e não é prescrição.</b>
-            São doses usuais de adulto, para estudo. Não contemplam criança, gestante,
-            insuficiência renal ou hepática, nem interações do caso concreto. Confira
-            cada uma na bula e no protocolo do seu serviço antes de qualquer uso.
-          </div>
-        </div>
         <ul class="poso-lista">${itens.join("")}</ul>
         ${data.observacoes ? `<p class="poso-obs">${escapeHTML(String(data.observacoes))}</p>` : ""}
         <button class="poso-copiar" id="btnPosoCopiar" type="button">Copiar tabela</button>`;
@@ -2571,11 +2561,7 @@ function anamHTMLresultado() {
       A IA reescreve só a história da doença atual em linguagem clínica. Ela não inventa
       sintoma nem sugere diagnóstico — e o resto do texto já está pronto sem ela.
     </p>
-    <textarea class="anam-res__texto" id="anamTexto" rows="22" spellcheck="false"></textarea>
-    <p class="anam__aviso anam__aviso--res">
-      Revise antes de usar. Texto de apoio ao estudo, não substitui registro em prontuário
-      feito por profissional responsável.
-    </p>`;
+    <textarea class="anam-res__texto" id="anamTexto" rows="22" spellcheck="false"></textarea>`;
 }
 
 /* ---------- Eventos ---------- */
@@ -3309,11 +3295,7 @@ function abrirEscore(id) {
     <h3 class="calc__h">${escapeHTML(esc.nome)}</h3>
     <p class="calc__desc">${escapeHTML(esc.descricao)}</p>
     <div class="calc__campos">${esc.campos.map(campoHTML).join("")}</div>
-    <div class="calc-res" id="calcRes" hidden></div>
-    <p class="calc__aviso">
-      Resultado calculado no seu navegador, sem IA. Ainda assim,
-      <b>escore não substitui julgamento clínico</b> — interprete no contexto do paciente.
-    </p>`;
+    <div class="calc-res" id="calcRes" hidden></div>`;
   show($("#calcDetalhe"));
 
   $("#calcVoltarLista").addEventListener("click", () => { listarEscores($("#calcFiltro").value); });
