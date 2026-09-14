@@ -3074,6 +3074,14 @@ function ligarEventosReporte() {
    ================================================================= */
 
 /* Tipos de campo: num (número), opt (escolha única), sim (sim/não) */
+/* As duas escalas de rastreio usam a mesma régua de frequência nas duas
+   últimas semanas. Declarar uma vez evita que elas divirjam por descuido. */
+const FREQUENCIA = [
+  [0, "Nenhum dia"], [1, "Vários dias"],
+  [2, "Mais da metade dos dias"], [3, "Quase todos os dias"],
+];
+const itemFrequencia = (id, rotulo) => ({ id, rotulo, tipo: "opt", opcoes: FREQUENCIA });
+
 const ESCORES = [
   {
     id: "imc",
@@ -3245,6 +3253,173 @@ const ESCORES = [
     },
   },
   {
+    id: "heart",
+    nome: "HEART",
+    area: "Cardiologia",
+    descricao: "Risco de evento cardíaco em dor torácica no pronto-socorro.",
+    campos: [
+      { id: "historia", rotulo: "História clínica", tipo: "opt",
+        opcoes: [[0, "Pouco suspeita"], [1, "Moderadamente suspeita"], [2, "Muito suspeita"]] },
+      { id: "ecg", rotulo: "ECG", tipo: "opt",
+        opcoes: [[0, "Normal"], [1, "Alteração inespecífica de repolarização"], [2, "Desvio significativo de ST"]] },
+      { id: "idade", rotulo: "Idade", tipo: "opt",
+        opcoes: [[0, "Menos de 45 anos"], [1, "45 a 64 anos"], [2, "65 anos ou mais"]] },
+      { id: "fatores", rotulo: "Fatores de risco", tipo: "opt",
+        opcoes: [[0, "Nenhum"], [1, "Um ou dois"], [2, "Três ou mais, ou doença aterosclerótica"]] },
+      { id: "troponina", rotulo: "Troponina", tipo: "opt",
+        opcoes: [[0, "Normal"], [1, "1 a 3× o limite"], [2, "Acima de 3× o limite"]] },
+    ],
+    calcular: (v, total) => {
+      const alto = total >= 7, moderado = total >= 4;
+      return { valor: total, unidade: "de 10",
+               rotulo: alto ? "Risco alto" : moderado ? "Risco moderado" : "Risco baixo",
+               nivel: alto ? "alerta" : moderado ? "atencao" : "ok",
+               nota: alto ? "Conduta invasiva precoce costuma ser considerada."
+                 : moderado ? "Internação para investigação costuma ser considerada."
+                 : "Alta precoce é possível na maioria — sempre com troponina seriada." };
+    },
+  },
+  {
+    id: "timi",
+    nome: "TIMI (SCA sem supra)",
+    area: "Cardiologia",
+    descricao: "Risco em angina instável e infarto sem supradesnivelamento de ST.",
+    campos: [
+      { id: "idade65", rotulo: "Idade ≥ 65 anos", tipo: "sim" },
+      { id: "fatores3", rotulo: "Três ou mais fatores de risco para doença coronariana", tipo: "sim" },
+      { id: "dacConhecida", rotulo: "Doença coronariana conhecida (estenose ≥ 50%)", tipo: "sim" },
+      { id: "aas", rotulo: "Uso de AAS nos últimos 7 dias", tipo: "sim" },
+      { id: "anginaGrave", rotulo: "Dois ou mais episódios de angina em 24 horas", tipo: "sim" },
+      { id: "desvioST", rotulo: "Desvio de ST ≥ 0,5 mm", tipo: "sim" },
+      { id: "marcadores", rotulo: "Marcadores de necrose miocárdica elevados", tipo: "sim" },
+    ],
+    calcular: (v, total) => {
+      const risco = [4.7, 4.7, 8.3, 13.2, 19.9, 26.2, 40.9, 40.9][total];
+      const nivel = total >= 5 ? "alerta" : total >= 3 ? "atencao" : "ok";
+      return { valor: total, unidade: "de 7",
+               rotulo: `Risco de evento em 14 dias: ${numeroPt(risco)}%`, nivel,
+               nota: "Desfecho composto: morte, infarto ou revascularização de urgência." };
+    },
+  },
+  {
+    id: "wells_tep",
+    nome: "Wells (TEP)",
+    area: "Emergência",
+    descricao: "Probabilidade pré-teste de tromboembolismo pulmonar.",
+    campos: [
+      { id: "sinaisTVP", rotulo: "Sinais clínicos de TVP", tipo: "sim", peso: 3 },
+      { id: "tepProvavel", rotulo: "TEP é o diagnóstico mais provável, ou tão provável quanto", tipo: "sim", peso: 3 },
+      { id: "fc100", rotulo: "Frequência cardíaca > 100 bpm", tipo: "sim", peso: 1.5 },
+      { id: "imobilizacao", rotulo: "Imobilização ≥ 3 dias ou cirurgia nas últimas 4 semanas", tipo: "sim", peso: 1.5 },
+      { id: "tepPrevio", rotulo: "TVP ou TEP prévios", tipo: "sim", peso: 1.5 },
+      { id: "hemoptise", rotulo: "Hemoptise", tipo: "sim" },
+      { id: "cancer", rotulo: "Câncer em tratamento nos últimos 6 meses ou paliativo", tipo: "sim" },
+    ],
+    calcular: (v, total) => {
+      const t = Math.round(total * 10) / 10;
+      const nivel = t > 6 ? "alerta" : t >= 2 ? "atencao" : "ok";
+      const rotulo = t > 6 ? "Probabilidade alta" : t >= 2 ? "Probabilidade moderada" : "Probabilidade baixa";
+      return { valor: numeroPt(t), unidade: "pontos", rotulo, nivel,
+               nota: `Na versão de duas faixas, ${t > 4 ? "acima de 4 é 'TEP provável'" : "até 4 é 'TEP improvável'"} — aqui, ${numeroPt(t)}.` };
+    },
+  },
+  {
+    id: "perc",
+    nome: "PERC",
+    area: "Emergência",
+    descricao: "Descarta TEP sem exame, mas só em quem já é de baixo risco.",
+    campos: [
+      { id: "idade50", rotulo: "Idade ≥ 50 anos", tipo: "sim" },
+      { id: "fc100", rotulo: "Frequência cardíaca ≥ 100 bpm", tipo: "sim" },
+      { id: "satO2", rotulo: "Saturação de O₂ < 95% em ar ambiente", tipo: "sim" },
+      { id: "edema", rotulo: "Edema unilateral de membro inferior", tipo: "sim" },
+      { id: "hemoptise", rotulo: "Hemoptise", tipo: "sim" },
+      { id: "cirurgia", rotulo: "Cirurgia ou trauma com internação nas últimas 4 semanas", tipo: "sim" },
+      { id: "tepPrevio", rotulo: "TVP ou TEP prévios", tipo: "sim" },
+      { id: "hormonio", rotulo: "Uso de estrogênio", tipo: "sim" },
+    ],
+    calcular: (v, total) => ({
+      valor: total, unidade: total === 1 ? "critério" : "critérios",
+      rotulo: total === 0 ? "PERC negativo — TEP descartado" : "PERC positivo — seguir investigando",
+      nivel: total === 0 ? "ok" : "atencao",
+      nota: total === 0
+        ? "Vale apenas quando a probabilidade clínica já era baixa. Em risco moderado ou alto, o PERC não se aplica."
+        : "Um único critério presente já invalida a regra.",
+    }),
+  },
+  {
+    id: "alvarado",
+    nome: "Alvarado",
+    area: "Emergência",
+    descricao: "Probabilidade de apendicite aguda.",
+    campos: [
+      { id: "migracao", rotulo: "Migração da dor para a fossa ilíaca direita", tipo: "sim" },
+      { id: "anorexia", rotulo: "Anorexia", tipo: "sim" },
+      { id: "nausea", rotulo: "Náusea ou vômito", tipo: "sim" },
+      { id: "dorFID", rotulo: "Dor à palpação da fossa ilíaca direita", tipo: "sim", peso: 2 },
+      { id: "descompressao", rotulo: "Descompressão brusca dolorosa", tipo: "sim" },
+      { id: "febre", rotulo: "Temperatura ≥ 37,3 °C", tipo: "sim" },
+      { id: "leucocitose", rotulo: "Leucócitos > 10.000/mm³", tipo: "sim", peso: 2 },
+      { id: "desvio", rotulo: "Desvio à esquerda (neutrófilos > 75%)", tipo: "sim" },
+    ],
+    calcular: (v, total) => {
+      const nivel = total >= 7 ? "alerta" : total >= 5 ? "atencao" : "ok";
+      const rotulo = total >= 9 ? "Apendicite muito provável"
+        : total >= 7 ? "Apendicite provável"
+        : total >= 5 ? "Apendicite possível" : "Apendicite pouco provável";
+      return { valor: total, unidade: "de 10", rotulo, nivel };
+    },
+  },
+  {
+    id: "ckdepi",
+    nome: "TFG (CKD-EPI 2021)",
+    area: "Nefrologia",
+    descricao: "Taxa de filtração glomerular estimada. Versão sem correção por raça.",
+    campos: [
+      { id: "idade", rotulo: "Idade", tipo: "num", sufixo: "anos", min: 18, max: 120 },
+      { id: "creatinina", rotulo: "Creatinina sérica", tipo: "num", sufixo: "mg/dL", min: 0.1, max: 20, passo: "0.01" },
+      { id: "sexo", rotulo: "Sexo", tipo: "opt", opcoes: [["m", "Masculino"], ["f", "Feminino"]] },
+    ],
+    calcular: v => {
+      const fem = v.sexo === "f";
+      const k = fem ? 0.7 : 0.9;
+      const a = fem ? -0.241 : -0.302;
+      const r = v.creatinina / k;
+      const tfg = 142 * Math.pow(Math.min(r, 1), a) * Math.pow(Math.max(r, 1), -1.200)
+        * Math.pow(0.9938, v.idade) * (fem ? 1.012 : 1);
+      const faixas = [
+        [15, "G5 — falência renal", "alerta"], [30, "G4 — redução grave", "alerta"],
+        [45, "G3b — redução moderada a grave", "alerta"], [60, "G3a — redução leve a moderada", "atencao"],
+        [90, "G2 — redução leve", "atencao"], [Infinity, "G1 — normal ou elevada", "ok"],
+      ];
+      const [, rotulo, nivel] = faixas.find(([lim]) => tfg < lim);
+      return { valor: tfg.toFixed(1), unidade: "mL/min/1,73m²", rotulo, nivel,
+               nota: "Para ajuste de dose de fármaco, o Cockcroft-Gault ainda é a referência de muitas bulas." };
+    },
+  },
+  {
+    id: "aniongap",
+    nome: "Ânion gap",
+    area: "Nefrologia",
+    descricao: "Diferencia as acidoses metabólicas. Corrigido pela albumina.",
+    campos: [
+      { id: "na", rotulo: "Sódio", tipo: "num", sufixo: "mEq/L", min: 90, max: 200, passo: "0.1" },
+      { id: "cl", rotulo: "Cloro", tipo: "num", sufixo: "mEq/L", min: 50, max: 160, passo: "0.1" },
+      { id: "hco3", rotulo: "Bicarbonato", tipo: "num", sufixo: "mEq/L", min: 1, max: 60, passo: "0.1" },
+      { id: "albumina", rotulo: "Albumina", tipo: "num", sufixo: "g/dL", min: 0.5, max: 7, passo: "0.1" },
+    ],
+    calcular: v => {
+      const ag = v.na - (v.cl + v.hco3);
+      const corrigido = ag + 2.5 * (4 - v.albumina);
+      const nivel = corrigido > 12 ? "alerta" : corrigido < 8 ? "atencao" : "ok";
+      const rotulo = corrigido > 12 ? "Elevado — acidose com ânion gap aumentado"
+        : corrigido < 8 ? "Baixo — rever albumina, cálcio e paraproteínas"
+        : "Normal — acidose hiperclorêmica, se houver acidose";
+      return { valor: corrigido.toFixed(1), unidade: "mEq/L", rotulo, nivel,
+               nota: `Sem corrigir pela albumina daria ${ag.toFixed(1)}. Cada 1 g/dL a menos de albumina esconde 2,5 de ânion gap.` };
+    },
+  },
+  {
     id: "childpugh",
     nome: "Child-Pugh",
     area: "Gastroenterologia",
@@ -3268,6 +3443,201 @@ const ESCORES = [
     },
   },
   {
+    id: "sodiocorrigido",
+    nome: "Sódio corrigido",
+    area: "Nefrologia",
+    descricao: "Corrige o sódio pela glicemia na hiperglicemia.",
+    campos: [
+      { id: "na", rotulo: "Sódio medido", tipo: "num", sufixo: "mEq/L", min: 90, max: 200, passo: "0.1" },
+      { id: "glicemia", rotulo: "Glicemia", tipo: "num", sufixo: "mg/dL", min: 40, max: 1500 },
+    ],
+    calcular: v => {
+      const corr = v.na + 1.6 * ((v.glicemia - 100) / 100);
+      const nivel = corr < 135 || corr > 145 ? "atencao" : "ok";
+      const rotulo = corr < 135 ? "Hiponatremia verdadeira"
+        : corr > 145 ? "Hipernatremia" : "Sódio corrigido normal";
+      return { valor: corr.toFixed(1), unidade: "mEq/L", rotulo, nivel,
+               nota: "Fator de 1,6 (Katz). Algumas referências usam 2,4 (Hillier) acima de 400 mg/dL de glicemia." };
+    },
+  },
+  {
+    id: "calciocorrigido",
+    nome: "Cálcio corrigido",
+    area: "Nefrologia",
+    descricao: "Corrige o cálcio total pela albumina.",
+    campos: [
+      { id: "calcio", rotulo: "Cálcio total", tipo: "num", sufixo: "mg/dL", min: 3, max: 20, passo: "0.1" },
+      { id: "albumina", rotulo: "Albumina", tipo: "num", sufixo: "g/dL", min: 0.5, max: 7, passo: "0.1" },
+    ],
+    calcular: v => {
+      const corr = v.calcio + 0.8 * (4 - v.albumina);
+      const nivel = corr > 10.5 ? "alerta" : corr < 8.5 ? "atencao" : "ok";
+      const rotulo = corr > 10.5 ? "Hipercalcemia" : corr < 8.5 ? "Hipocalcemia" : "Cálcio corrigido normal";
+      return { valor: corr.toFixed(1), unidade: "mg/dL", rotulo, nivel,
+               nota: "Na dúvida, o cálcio iônico resolve sem fórmula nenhuma." };
+    },
+  },
+  {
+    id: "pesoideal",
+    nome: "Peso ideal e ajustado",
+    area: "Geral",
+    descricao: "Fórmula de Devine. Usada para calcular dose e volume corrente.",
+    campos: [
+      { id: "altura", rotulo: "Altura", tipo: "num", sufixo: "cm", min: 100, max: 250 },
+      { id: "peso", rotulo: "Peso atual", tipo: "num", sufixo: "kg", min: 20, max: 400, passo: "0.1" },
+      { id: "sexo", rotulo: "Sexo", tipo: "opt", opcoes: [["m", "Masculino"], ["f", "Feminino"]] },
+    ],
+    calcular: v => {
+      const polegadas = v.altura / 2.54;
+      const base = v.sexo === "f" ? 45.5 : 50;
+      const ideal = Math.max(base + 2.3 * (polegadas - 60), 1);
+      const ajustado = ideal + 0.4 * (v.peso - ideal);
+      const excesso = v.peso / ideal;
+      return { valor: ideal.toFixed(1), unidade: "kg de peso ideal",
+               rotulo: excesso >= 1.3 ? `Peso ajustado: ${ajustado.toFixed(1)} kg` : "Peso atual próximo do ideal",
+               nivel: excesso >= 1.3 ? "atencao" : "ok",
+               nota: excesso >= 1.3
+                 ? "Acima de 130% do peso ideal, muitos fármacos usam o peso ajustado."
+                 : `Peso ajustado seria ${ajustado.toFixed(1)} kg, mas abaixo de 130% do ideal costuma-se usar o peso real.` };
+    },
+  },
+  {
+    id: "homair",
+    nome: "HOMA-IR",
+    area: "Endocrinologia",
+    descricao: "Resistência à insulina a partir da glicemia e insulina de jejum.",
+    campos: [
+      { id: "glicemia", rotulo: "Glicemia de jejum", tipo: "num", sufixo: "mg/dL", min: 30, max: 600 },
+      { id: "insulina", rotulo: "Insulina de jejum", tipo: "num", sufixo: "µU/mL", min: 0.1, max: 300, passo: "0.1" },
+    ],
+    calcular: v => {
+      const homa = (v.glicemia * v.insulina) / 405;
+      const alto = homa > 2.71;
+      return { valor: homa.toFixed(2), unidade: "",
+               rotulo: alto ? "Resistência à insulina provável" : "Sem sinal de resistência à insulina",
+               nivel: alto ? "atencao" : "ok",
+               nota: "Ponto de corte de 2,71 do estudo BRAMS, para adultos brasileiros. Não vale em diabético em uso de insulina." };
+    },
+  },
+  {
+    id: "hba1c",
+    nome: "HbA1c → glicemia média",
+    area: "Endocrinologia",
+    descricao: "Converte a hemoglobina glicada em glicemia média estimada.",
+    campos: [
+      { id: "a1c", rotulo: "Hemoglobina glicada", tipo: "num", sufixo: "%", min: 3, max: 20, passo: "0.1" },
+    ],
+    calcular: v => {
+      const media = 28.7 * v.a1c - 46.7;
+      const nivel = v.a1c >= 6.5 ? "alerta" : v.a1c >= 5.7 ? "atencao" : "ok";
+      const rotulo = v.a1c >= 6.5 ? "Faixa de diabetes"
+        : v.a1c >= 5.7 ? "Faixa de pré-diabetes" : "Faixa normal";
+      return { valor: Math.round(media), unidade: "mg/dL de média", rotulo, nivel,
+               nota: "Equação do estudo ADAG. Anemia, hemoglobinopatia e gestação distorcem a glicada." };
+    },
+  },
+  {
+    id: "centor",
+    nome: "Centor / McIsaac",
+    area: "Infectologia",
+    descricao: "Probabilidade de faringite estreptocócica.",
+    campos: [
+      { id: "febre", rotulo: "Temperatura > 38 °C", tipo: "sim" },
+      { id: "semTosse", rotulo: "Ausência de tosse", tipo: "sim" },
+      { id: "adenopatia", rotulo: "Adenopatia cervical anterior dolorosa", tipo: "sim" },
+      { id: "exsudato", rotulo: "Exsudato ou aumento de amígdalas", tipo: "sim" },
+      { id: "idade", rotulo: "Idade", tipo: "opt",
+        opcoes: [[1, "3 a 14 anos"], [0, "15 a 44 anos"], [-1, "45 anos ou mais"]] },
+    ],
+    calcular: (v, total) => {
+      const nivel = total >= 4 ? "alerta" : total >= 2 ? "atencao" : "ok";
+      const rotulo = total >= 4 ? "Alta probabilidade"
+        : total >= 2 ? "Probabilidade intermediária" : "Baixa probabilidade";
+      const nota = total >= 4 ? "Teste rápido ou cultura; tratamento empírico é uma opção discutível."
+        : total >= 2 ? "Teste rápido ou cultura antes de decidir o antibiótico."
+        : "Não costuma justificar teste nem antibiótico.";
+      return { valor: total, unidade: "de 5", rotulo, nivel, nota };
+    },
+  },
+  {
+    id: "abcd2",
+    nome: "ABCD²",
+    area: "Neurologia",
+    descricao: "Risco de AVC nos dias seguintes a um AIT.",
+    campos: [
+      { id: "idade", rotulo: "Idade ≥ 60 anos", tipo: "sim" },
+      { id: "pa", rotulo: "PA ≥ 140/90 mmHg na avaliação", tipo: "sim" },
+      { id: "clinica", rotulo: "Quadro clínico", tipo: "opt",
+        opcoes: [[2, "Fraqueza unilateral"], [1, "Alteração de fala sem fraqueza"], [0, "Outro"]] },
+      { id: "duracao", rotulo: "Duração dos sintomas", tipo: "opt",
+        opcoes: [[2, "60 minutos ou mais"], [1, "10 a 59 minutos"], [0, "Menos de 10 minutos"]] },
+      { id: "dm", rotulo: "Diabetes mellitus", tipo: "sim" },
+    ],
+    calcular: (v, total) => {
+      const risco = total >= 6 ? "8,1" : total >= 4 ? "4,1" : "1,0";
+      const nivel = total >= 6 ? "alerta" : total >= 4 ? "atencao" : "ok";
+      const rotulo = total >= 6 ? "Risco alto" : total >= 4 ? "Risco moderado" : "Risco baixo";
+      return { valor: total, unidade: "de 7", rotulo, nivel,
+               nota: `Risco de AVC em 2 dias em torno de ${risco}%. Escore baixo não dispensa investigar a causa.` };
+    },
+  },
+  {
+    id: "apgar",
+    nome: "Apgar",
+    area: "Pediatria",
+    descricao: "Vitalidade do recém-nascido no primeiro e no quinto minuto.",
+    campos: [
+      { id: "fc", rotulo: "Frequência cardíaca", tipo: "opt",
+        opcoes: [[2, "100 bpm ou mais"], [1, "Abaixo de 100 bpm"], [0, "Ausente"]] },
+      { id: "respiracao", rotulo: "Esforço respiratório", tipo: "opt",
+        opcoes: [[2, "Choro forte"], [1, "Irregular ou fraco"], [0, "Ausente"]] },
+      { id: "tonus", rotulo: "Tônus muscular", tipo: "opt",
+        opcoes: [[2, "Movimento ativo"], [1, "Alguma flexão"], [0, "Flácido"]] },
+      { id: "reflexo", rotulo: "Irritabilidade reflexa", tipo: "opt",
+        opcoes: [[2, "Choro, tosse ou espirro"], [1, "Careta"], [0, "Ausente"]] },
+      { id: "cor", rotulo: "Cor", tipo: "opt",
+        opcoes: [[2, "Totalmente rosado"], [1, "Acrocianose"], [0, "Cianótico ou pálido"]] },
+    ],
+    calcular: (v, total) => {
+      const nivel = total <= 3 ? "alerta" : total <= 6 ? "atencao" : "ok";
+      const rotulo = total <= 3 ? "Anóxia grave" : total <= 6 ? "Anóxia moderada" : "Boa vitalidade";
+      return { valor: total, unidade: "de 10", rotulo, nivel,
+               nota: "O Apgar avalia a resposta, não indica quando reanimar — a reanimação começa antes do primeiro minuto." };
+    },
+  },
+  {
+    id: "gestacional",
+    nome: "Idade gestacional e DPP",
+    area: "Ginecologia e obstetrícia",
+    descricao: "Regra de Naegele, a partir da data da última menstruação.",
+    campos: [
+      { id: "dum", rotulo: "Data da última menstruação", tipo: "data" },
+    ],
+    calcular: v => {
+      // Datas em UTC: construir com new Date("aaaa-mm-dd") já dá meia-noite UTC,
+      // e comparar com o hoje local zerado evita o dia a mais ou a menos.
+      const dum = new Date(v.dum + "T00:00:00Z");
+      const agora = new Date();
+      const hojeUTC = Date.UTC(agora.getFullYear(), agora.getMonth(), agora.getDate());
+      const dias = Math.floor((hojeUTC - dum.getTime()) / 86400000);
+      if (!Number.isFinite(dias)) throw new Error("data inválida");
+      if (dias < 0) return { valor: "—", unidade: "", rotulo: "Data no futuro", nivel: "atencao" };
+      if (dias > 320) return { valor: "—", unidade: "", rotulo: "Mais de 45 semanas — confira a data", nivel: "atencao" };
+
+      const semanas = Math.floor(dias / 7);
+      const resto = dias % 7;
+      const dpp = new Date(dum.getTime() + 280 * 86400000);
+      const dppTxt = dpp.toLocaleDateString("pt-BR", { timeZone: "UTC" });
+      const nivel = semanas >= 42 ? "alerta" : (semanas >= 37 || semanas < 22) ? "atencao" : "ok";
+      const rotulo = semanas >= 42 ? `Pós-termo · DPP ${dppTxt}`
+        : semanas >= 37 ? `Termo · DPP ${dppTxt}`
+        : semanas >= 22 ? `Pré-termo se nascer agora · DPP ${dppTxt}`
+        : `Primeiro tempo da gestação · DPP ${dppTxt}`;
+      return { valor: `${semanas}s ${resto}d`, unidade: "", rotulo, nivel,
+               nota: "Vale para ciclos regulares de 28 dias. A ultrassonografia do primeiro trimestre é mais confiável." };
+    },
+  },
+  {
     id: "glasgow",
     nome: "Escala de coma de Glasgow",
     area: "Neurologia",
@@ -3285,6 +3655,62 @@ const ESCORES = [
       const rotulo = total <= 8 ? "Grave — considerar via aérea definitiva"
         : total <= 12 ? "Moderado" : "Leve";
       return { valor: total, unidade: "de 15", rotulo, nivel };
+    },
+  },
+  {
+    id: "phq9",
+    nome: "PHQ-9",
+    area: "Psiquiatria",
+    descricao: "Rastreio de depressão. Frequência dos sintomas nas últimas duas semanas.",
+    campos: [
+      itemFrequencia("interesse", "Pouco interesse ou prazer em fazer as coisas"),
+      itemFrequencia("humor", "Sentir-se para baixo, deprimido ou sem perspectiva"),
+      itemFrequencia("sono", "Dificuldade para dormir, ou dormir demais"),
+      itemFrequencia("energia", "Cansaço ou pouca energia"),
+      itemFrequencia("apetite", "Falta de apetite ou comer demais"),
+      itemFrequencia("autoimagem", "Sentir-se mal consigo mesmo, um fracasso, ou ter decepcionado a família"),
+      itemFrequencia("concentracao", "Dificuldade de concentração"),
+      itemFrequencia("psicomotor", "Lentidão para se mover ou falar, ou o oposto — agitação e inquietude"),
+      itemFrequencia("ideacao", "Pensar em se ferir ou que seria melhor estar morto"),
+    ],
+    calcular: (v, total) => {
+      const faixas = [
+        [5, "Sintomas mínimos", "ok"], [10, "Depressão leve", "atencao"],
+        [15, "Depressão moderada", "atencao"], [20, "Depressão moderadamente grave", "alerta"],
+        [Infinity, "Depressão grave", "alerta"],
+      ];
+      const [, rotulo, nivel] = faixas.find(([lim]) => total < lim);
+      // O item 9 é o único que muda a conduta sozinho, independente do total.
+      const ideacao = Number(v.ideacao) > 0;
+      return { valor: total, unidade: "de 27", rotulo,
+               nivel: ideacao ? "alerta" : nivel,
+               nota: ideacao
+                 ? "Resposta positiva no item de ideação suicida pede avaliação de risco agora, qualquer que seja o total. CVV: 188, ligação gratuita, 24 horas."
+                 : "A partir de 10 pontos, investigar episódio depressivo maior. Rastreio não fecha diagnóstico." };
+    },
+  },
+  {
+    id: "gad7",
+    nome: "GAD-7",
+    area: "Psiquiatria",
+    descricao: "Rastreio de ansiedade generalizada nas últimas duas semanas.",
+    campos: [
+      itemFrequencia("nervoso", "Sentir-se nervoso, ansioso ou no limite"),
+      itemFrequencia("preocupacao", "Não conseguir parar ou controlar as preocupações"),
+      itemFrequencia("preocupaMuito", "Preocupar-se demais com coisas diferentes"),
+      itemFrequencia("relaxar", "Dificuldade para relaxar"),
+      itemFrequencia("inquieto", "Ficar tão inquieto que é difícil permanecer sentado"),
+      itemFrequencia("irritado", "Ficar facilmente aborrecido ou irritado"),
+      itemFrequencia("medo", "Sentir medo como se algo terrível fosse acontecer"),
+    ],
+    calcular: (v, total) => {
+      const faixas = [
+        [5, "Sintomas mínimos", "ok"], [10, "Ansiedade leve", "atencao"],
+        [15, "Ansiedade moderada", "atencao"], [Infinity, "Ansiedade grave", "alerta"],
+      ];
+      const [, rotulo, nivel] = faixas.find(([lim]) => total < lim);
+      return { valor: total, unidade: "de 21", rotulo, nivel,
+               nota: "A partir de 10 pontos, investigar transtorno de ansiedade. Rastreio não fecha diagnóstico." };
     },
   },
   {
@@ -3405,9 +3831,12 @@ function abrirEscore(id) {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
+/* "1.5" num rótulo em português lê como mil e quinhentos. */
+const numeroPt = n => String(n).replace(".", ",");
+
 function campoHTML(c) {
   const peso = c.tipo === "sim" && (c.peso ?? 1) !== 1
-    ? `<span class="calc-peso">${c.peso > 0 ? "+" : ""}${c.peso}</span>` : "";
+    ? `<span class="calc-peso">${c.peso > 0 ? "+" : ""}${numeroPt(c.peso)}</span>` : "";
 
   if (c.tipo === "sim") {
     return `<button class="calc-sim" type="button" data-campo="${escapeHTML(c.id)}" aria-pressed="false">
@@ -3422,8 +3851,17 @@ function campoHTML(c) {
         ${c.opcoes.map(([val, txt]) => `
           <button class="calc-opt" type="button" data-campo="${escapeHTML(c.id)}"
                   data-valor="${escapeHTML(String(val))}" aria-pressed="false">
-            ${escapeHTML(txt)}<span class="calc-peso">${escapeHTML(String(val))}</span>
+            ${escapeHTML(txt)}${Number.isFinite(Number(val))
+              ? `<span class="calc-peso">${escapeHTML(numeroPt(val))}</span>` : ""}
           </button>`).join("")}
+      </div></div>`;
+  }
+  if (c.tipo === "data") {
+    return `<div class="calc-campo calc-campo--num">
+      <label class="calc-campo__r" for="calc-${escapeHTML(c.id)}">${escapeHTML(c.rotulo)}</label>
+      <div class="calc-num">
+        <input id="calc-${escapeHTML(c.id)}" class="calc-data" type="date"
+               data-campo="${escapeHTML(c.id)}" />
       </div></div>`;
   }
   return `<div class="calc-campo calc-campo--num">
@@ -3458,7 +3896,13 @@ function ligarCamposEscore() {
     recalcular();
   }));
 
-  $$(".calc-num input", d).forEach(el => el.addEventListener("input", () => {
+  $$(".calc-data", d).forEach(el => el.addEventListener("input", () => {
+    if (el.value) calcValores[el.dataset.campo] = el.value;
+    else delete calcValores[el.dataset.campo];
+    recalcular();
+  }));
+
+  $$(".calc-num input:not(.calc-data)", d).forEach(el => el.addEventListener("input", () => {
     const n = parseFloat(el.value);
     if (Number.isFinite(n)) calcValores[el.dataset.campo] = n;
     else delete calcValores[el.dataset.campo];
@@ -3474,7 +3918,9 @@ function podeCalcular(esc) {
       const v = calcValores[c.id];
       return Number.isFinite(v) && v > 0;
     }
-    if (c.tipo === "opt") return calcValores[c.id] !== undefined && calcValores[c.id] !== "";
+    if (c.tipo === "opt" || c.tipo === "data") {
+      return calcValores[c.id] !== undefined && calcValores[c.id] !== "";
+    }
     return true;   // caixas de "sim" em branco valem como "não"
   });
 }
@@ -3486,7 +3932,8 @@ function recalcular() {
 
   if (!podeCalcular(esc)) {
     const faltam = esc.campos.filter(c => c.tipo !== "sim" &&
-      (calcValores[c.id] === undefined || calcValores[c.id] === "")).length;
+      (calcValores[c.id] === undefined || calcValores[c.id] === "" ||
+       (c.tipo === "num" && !(Number(calcValores[c.id]) > 0)))).length;
     out.innerHTML = `<p class="calc-res__espera">Preencha ${faltam === 1 ? "o campo que falta" : `os ${faltam} campos`} para ver o resultado.</p>`;
     show(out);
     return;
