@@ -48,7 +48,10 @@ guarda.
 
 Se o termo for amplo (hepatite, anemia, diabetes), a ficha ganha uma seção de
 variações com os subtipos. Se for um medicamento, ela troca de formato: princípio
-ativo, classe, mecanismo de ação, efeitos adversos, contraindicações e interações.
+ativo, classe, mecanismo de ação, efeitos adversos, contraindicações e interações
+— mais um cartão de **doses usuais**, com as apresentações que existem, a dose de
+cada indicação, a dose máxima e os ajustes renal e hepático. São doses gerais, de
+referência: o que serve para estudar, não esquema para um paciente.
 E os diferenciais são clicáveis — um clique já abre a ficha da outra condição.
 
 ## A aba de estudar
