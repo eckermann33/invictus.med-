@@ -154,6 +154,7 @@ se não carregar, o botão de PDF cai sozinho para a janela de impressão.
 | `index.html` | marcação, metadados e o script curto que aplica o tema antes da primeira pintura |
 | `style.css` | tokens de cor, tema claro/escuro, responsivo e estilos de impressão |
 | `script.js` | busca, chamadas à IA, renderização, histórico, favoritos, voz e exportação |
+| `demo.js` | duas fichas de exemplo, carregadas só quando não há Worker |
 | `proxy-worker.example.js` | o Cloudflare Worker que guarda a chave da IA |
 
 A chave da IA nunca chega ao navegador. Quem fala com o modelo é um Cloudflare
@@ -163,7 +164,8 @@ passa para o próximo sozinho. A aba de estudo usa uma chave separada, para não
 disputar cota com as fichas.
 
 E se não houver IA configurada, buscar por "hipertensão" ou "diabetes" ainda
-funciona: essas duas fichas estão embutidas no código como demonstração.
+funciona: essas duas fichas ficam no `demo.js`. Ele só é baixado nesse caso —
+com o Worker no ar, o arquivo nunca sai da rede.
 
 ## Mexendo no código
 
@@ -174,10 +176,11 @@ reconhecimento de voz exigem contexto seguro. Suba um servidor:
 python3 -m http.server 8000   # ou: npx serve .
 ```
 
-A configuração fica toda no objeto `CONFIG`, no topo do `script.js`. O normal é
-`PROVIDER: "proxy"` com a URL do seu Worker em `PROXY_URL`. Existem também os
-modos diretos (`gemini`, `openai`, `anthropic`), mas neles a chave fica visível
-no código-fonte do site — servem para teste local, nunca para publicar.
+A configuração fica toda no objeto `CONFIG`, no topo do `script.js`, e o que
+importa ali é o `PROXY_URL`. Não há modo de chamar o modelo direto do navegador:
+seria preciso colocar a chave no código-fonte de um site público, e a economia de
+alguns minutos de configuração não paga a conta que vem depois. Quem escolhe
+modelo, monta o prompt e faz a cascata entre provedores é o Worker.
 
 Para subir o seu próprio Worker, `proxy-worker.example.js` é o ponto de partida:
 copie para `src/index.js` num projeto Cloudflare, cadastre as chaves como

@@ -1,42 +1,51 @@
 /* =================================================================
    Invictus.Med — script.js
-   Lógica da aplicação: IA configurável, busca, renderização de ficha
-   clínica, histórico, favoritos, voz, sugestões, exportação.
-   JavaScript puro — sem frameworks.
+   Lógica da aplicação: busca via Worker, ficha clínica, anamnese,
+   calculadoras, ferramentas de estudo, histórico e favoritos.
+   JavaScript puro — sem frameworks, sem etapa de build.
+   -----------------------------------------------------------------
+   Seções (na ordem do arquivo):
+      1) CONFIGURAÇÃO
+      2) MEUS PROJETOS
+      3) ATALHOS DE DOM
+      4) UTILITÁRIOS
+      5) SUGESTÕES AUTOMÁTICAS
+      6) CHAMADA À IA
+      7) FLUXO DE BUSCA
+      8) RENDERIZAÇÃO DA FICHA
+      9) PDF DE ESTUDO
+     10) ABA DE ESTUDO
+     11) REFERÊNCIAS EM ABNT
+     12) ESTUDO DE CASO
+     13) COPIAR / COMPARTILHAR
+     14) HISTÓRICO & FAVORITOS
+     15) BUSCA POR VOZ
+     16) TEMA
+     17) DEMONSTRAÇÃO OFFLINE
+     18) LIGAÇÃO DE EVENTOS GLOBAIS
+     19) ANAMNESE ESTRUTURADA
+     20) REPORTAR CONTEÚDO ERRADO
+     21) CALCULADORAS E ESCORES CLÍNICOS
+     22) MODO SCRIPT
+     23) ESTUDAR O QUE JÁ FOI PESQUISADO
+     24) INICIALIZAÇÃO
    ================================================================= */
 
 "use strict";
 
 /* =================================================================
-   1) CONFIGURAÇÃO DA IA
+   1) CONFIGURAÇÃO
    -----------------------------------------------------------------
-   Há dois caminhos gratuitos com o Google Gemini:
-
-   • PROVIDER: "proxy"  (RECOMENDADO) — a chave fica escondida num
-     servidor gratuito (Cloudflare Worker). Veja proxy-worker.js.
-     Configure apenas CONFIG.PROXY_URL com a URL do seu Worker.
-     Neste modo, a const API_KEY abaixo é ignorada.
-
-   • PROVIDER: "gemini" — chama o Google direto do navegador. Mais
-     simples, mas a chave fica VISÍVEL no código. Use só para testes.
-     Neste modo, cole a chave em const API_KEY.
-
-   Provedores pagos opcionais: "openai" e "anthropic".
+   Toda chamada à IA passa pelo Worker (Cloudflare). A chave da API
+   fica lá, nunca no navegador — e é o Worker que monta o prompt,
+   escolhe o modelo e faz a cascata entre provedores quando um falha.
+   Aqui só precisa estar a URL dele.
 
    ⚠️ Privacidade: este site só envia o NOME da doença para a IA.
    Nunca digite dados de pacientes na busca.
    ================================================================= */
-const API_KEY = "INSERIR_CHAVE_AQUI";   // ← só é usada se PROVIDER for "gemini" direto
-
 const CONFIG = {
-  API_KEY: API_KEY,
-  // "proxy"  = chave escondida no servidor (Cloudflare Worker) — RECOMENDADO
-  // "gemini" = chave direto no navegador (grátis, mas a chave fica visível)
-  // "openai" / "anthropic" = provedores pagos
-  PROVIDER: "proxy",
   PROXY_URL: "https://invictus-proxy.n9rn6tsb26.workers.dev/",   // ← URL do seu Worker
-  MODEL: "gemini-2.5-flash",
-  MAX_TOKENS: 8192,
   // Endpoint para relatos de erro de conteúdo. Vazio = o site monta o texto
   // e oferece cópia, em vez de enviar sozinho.
   REPORT_URL: "",
@@ -44,15 +53,10 @@ const CONFIG = {
   TIMEOUT_MS: 45000,
   // Tamanho máximo do termo enviado à IA (evita payloads abusivos).
   MAX_TERM_LEN: 400,
-  // Endpoints
-  GEMINI_URL: "https://generativelanguage.googleapis.com/v1beta/models",
-  ANTHROPIC_URL: "https://api.anthropic.com/v1/messages",
-  ANTHROPIC_VERSION: "2023-06-01",
-  OPENAI_URL: "https://api.openai.com/v1/chat/completions",
 };
 
 /* =================================================================
-   MEUS PROJETOS — edite aqui livremente.
+   2) MEUS PROJETOS — edite aqui livremente.
    "nome" = o texto que aparece (a máscara). "url" = o link real.
    Adicione/remova quantos quiser, no formato { nome: "...", url: "..." },
    ================================================================= */
@@ -63,83 +67,6 @@ const PROJECTS = [
   { nome: "DPOC-CLINICO", url: "https://eckermann33.github.io/DPOC-Clinico/" },
   // { nome: "Outro projeto", url: "https://..." },
 ];
-
-/* =================================================================
-   2) PROMPT ESTRUTURADO (retorno em JSON em português)
-   ================================================================= */
-function buildPrompt(termo) {
-  return `Você é um assistente médico de referência clínica para estudantes e profissionais da saúde.
-Analise o termo: "${termo}".
-
-Responda EXCLUSIVAMENTE com um objeto JSON válido (sem texto antes ou depois, sem markdown, sem crases) seguindo EXATAMENTE este esquema e em português do Brasil:
-
-{
-  "nome": "nome correto e completo da condição",
-  "cid10": "código CID-10 ou ''",
-  "cid11": "código CID-11 ou ''",
-  "sinonimos": ["sinônimos populares e técnicos"],
-  "area_medica": "especialidade(s) relacionada(s)",
-  "definicao": "explicação médica objetiva e clara (2 a 4 frases)",
-  "sintomas_comuns": ["sintomas mais frequentes"],
-  "sintomas_raros": ["sintomas raros ou menos frequentes"],
-  "sinais_alerta": ["sinais que exigem avaliação médica URGENTE"],
-  "tratamento": {
-    "padrao": ["condutas e tratamento padrão"],
-    "medicamentos": ["medicamentos/classes frequentemente usados"],
-    "complementares": ["tratamentos complementares ou de suporte"],
-    "prognostico": "prognóstico geral em 1 a 2 frases"
-  },
-  "diagnostico": {
-    "laboratoriais": ["exames laboratoriais"],
-    "imagem": ["exames de imagem"],
-    "criterios": ["critérios diagnósticos relevantes"]
-  },
-  "complicacoes": ["possíveis complicações"],
-  "variacoes": [
-    { "nome": "", "definicao": "", "transmissao": "(apenas se infecciosa, senão '')", "gravidade": "leve|moderada|grave", "tratamento": "" }
-  ],
-  "diferenciais": ["doenças semelhantes que podem ser confundidas"],
-  "epidemiologia": {
-    "prevalencia": "",
-    "faixa_etaria": "faixa etária mais acometida",
-    "sexo": "sexo mais acometido",
-    "distribuicao_geografica": ""
-  },
-  "fisiopatologia": {
-    "simples": "explicação simplificada para leigos",
-    "avancada": "explicação detalhada para estudantes de medicina"
-  },
-  "referencias": ["fontes médicas reconhecidas utilizadas"]
-}
-
-SE O TERMO FOR UM FÁRMACO / MEDICAMENTO (ex.: "Sertralina", "Metformina", "Omeprazol"), ignore o esquema acima e responda com ESTE outro esquema:
-
-{
-  "nome": "nome do fármaco",
-  "tipo": "farmaco",
-  "area_medica": "especialidade(s) em que é mais usado",
-  "sinonimos": ["nomes comerciais e sinônimos"],
-  "farmaco": {
-    "principio_ativo": "",
-    "classe": "classe farmacológica",
-    "para_que_serve": "explicação objetiva (2 a 4 frases)",
-    "doencas_tratadas": ["condições tratadas"],
-    "mecanismo_simples": "mecanismo de ação em linguagem acessível",
-    "mecanismo_avancado": "mecanismo detalhado (receptores, vias, farmacocinética)",
-    "efeitos_adversos_comuns": [],
-    "efeitos_adversos_graves": [],
-    "contraindicacoes": [],
-    "interacoes": ["interações medicamentosas relevantes"]
-  },
-  "referencias": ["fontes médicas reconhecidas utilizadas"]
-}
-
-REGRAS IMPORTANTES:
-- O termo pode descrever um CENÁRIO CLÍNICO com VÁRIAS condições/comorbidades (ex.: "paciente com hipertensão arterial sistêmica, diabetes tipo 2 e obesidade"). Nesse caso: use "nome" como rótulo curto do quadro (ex.: "Quadro clínico: HAS + DM2 + Obesidade"); em "definicao" faça um panorama integrado das comorbidades e como se relacionam; preencha "variacoes" com UMA entrada por condição individual (nome, definicao, gravidade, tratamento); em "tratamento" priorize o manejo integrado; em "complicacoes" destaque os riscos combinados; em "diferenciais" relacione condições associadas.
-- Se o termo for AMPLO (ex.: "Hepatite", "Diabetes", "Anemia"), preencha "variacoes" com os principais tipos/subtipos. Caso contrário, deixe "variacoes" como [].
-- Listas sem dados pertinentes devem ficar vazias ([]). Não invente códigos CID.
-- Seja CONCISO: no máximo ~6 itens por lista. Responda SOMENTE com o JSON COMPLETO e válido — nunca corte a resposta no meio.`;
-}
 
 /* =================================================================
    3) ATALHOS DE DOM
@@ -388,100 +315,16 @@ function isFichaValida(d) {
 }
 
 async function fetchAnalysis(termo, signal) {
-  /* ---- Modo proxy: a chave fica no servidor (Cloudflare Worker) ---- */
-  if (CONFIG.PROVIDER === "proxy") {
-    if (!isProxyConfigured()) {
-      const demo = getDemo(termo);
-      if (demo) return demo;
-      throw errWithCode("NO_PROXY", "NO_PROXY");
-    }
-    const data = await postProxy({ termo }, signal); // o Worker devolve a ficha pronta
-    if (!isFichaValida(data)) throw errWithCode("BAD_SHAPE", "FICHA");
-    return data;
-  }
-
-  /* ---- Modos diretos (chave no navegador) ---- */
-  // Sem chave configurada → tenta demonstração offline
-  if (!CONFIG.API_KEY || CONFIG.API_KEY === "INSERIR_CHAVE_AQUI") {
-    const demo = getDemo(termo);
+  if (!isProxyConfigured()) {
+    // Fork sem Worker configurado: mostra a ficha de demonstração, se houver
+    // uma para o termo, em vez de só um erro.
+    const demo = await getDemo(termo);
     if (demo) return demo;
-    throw errWithCode("NO_KEY", "NO_KEY");
+    throw errWithCode("NO_PROXY", "NO_PROXY");
   }
-
-  const prompt = buildPrompt(termo);
-  let raw;
-
-  if (CONFIG.PROVIDER === "gemini") {
-    // Endpoint nativo do Gemini — funciona direto do navegador (CORS ok).
-    // responseMimeType: "application/json" força a resposta a vir só em JSON.
-    const url = `${CONFIG.GEMINI_URL}/${CONFIG.MODEL}:generateContent?key=${encodeURIComponent(CONFIG.API_KEY)}`;
-    const res = await fetchWithTimeout(url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: {
-          maxOutputTokens: CONFIG.MAX_TOKENS,
-          temperature: 0.3,
-          responseMimeType: "application/json",
-        },
-      }),
-    }, signal);
-    if (!res.ok) throw errWithCode(`HTTP ${res.status}`, `HTTP-${res.status}`);
-    const data = await res.json();
-    raw = (data?.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("");
-  } else if (CONFIG.PROVIDER === "anthropic") {
-    const res = await fetchWithTimeout(CONFIG.ANTHROPIC_URL, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": CONFIG.API_KEY,
-        "anthropic-version": CONFIG.ANTHROPIC_VERSION,
-        "anthropic-dangerous-direct-browser-access": "true",
-      },
-      body: JSON.stringify({
-        model: CONFIG.MODEL,
-        max_tokens: CONFIG.MAX_TOKENS,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    }, signal);
-    if (!res.ok) throw errWithCode(`HTTP ${res.status}`, `HTTP-${res.status}`);
-    const data = await res.json();
-    raw = (data.content || []).map(b => b.text || "").join("");
-  } else {
-    // OpenAI-compatível
-    const res = await fetchWithTimeout(CONFIG.OPENAI_URL, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "authorization": `Bearer ${CONFIG.API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: CONFIG.MODEL,
-        max_tokens: CONFIG.MAX_TOKENS,
-        messages: [
-          { role: "system", content: "Responda apenas com JSON válido, sem markdown." },
-          { role: "user", content: prompt },
-        ],
-      }),
-    }, signal);
-    if (!res.ok) throw errWithCode(`HTTP ${res.status}`, `HTTP-${res.status}`);
-    const data = await res.json();
-    raw = data?.choices?.[0]?.message?.content || "";
-  }
-
-  const ficha = parseJSON(raw);
-  if (!isFichaValida(ficha)) throw errWithCode("BAD_SHAPE", "FICHA");
-  return ficha;
-}
-
-/* Extrai e valida o JSON da resposta (tolerante a crases/texto extra) */
-function parseJSON(text) {
-  let t = String(text).trim().replace(/```json|```/gi, "").trim();
-  const start = t.indexOf("{");
-  const end = t.lastIndexOf("}");
-  if (start !== -1 && end !== -1) t = t.slice(start, end + 1);
-  return JSON.parse(t);
+  const data = await postProxy({ termo }, signal); // o Worker devolve a ficha pronta
+  if (!isFichaValida(data)) throw errWithCode("BAD_SHAPE", "FICHA");
+  return data;
 }
 
 /* Mensagens que se alternam enquanto a IA "pensa" */
@@ -976,10 +819,7 @@ function initScrollSpy() {
 }
 
 /* =================================================================
-   9) COPIAR / COMPARTILHAR (texto formatado)
-   ================================================================= */
-/* =================================================================
-   PDF DE ESTUDO — documento limpo e contínuo (não formato de impressora)
+   9) PDF DE ESTUDO — documento limpo e contínuo (não formato de impressora)
    ================================================================= */
 function buildStudyHTML(d) {
   const esc = escapeHTML;
@@ -1153,7 +993,7 @@ function openPrintWindow(d) {
 }
 
 /* =================================================================
-   ABA DE ESTUDO — quiz, flashcards, resumo e mapa mental (via Cerebras).
+   10) ABA DE ESTUDO — quiz, flashcards, resumo e mapa mental (via Cerebras).
    Gera por tema digitado, sob demanda (só no clique de cada ferramenta).
    ================================================================= */
 function openStudy(tema) {
@@ -1301,7 +1141,7 @@ function renderMapa(data, out) {
 }
 
 /* =================================================================
-   REFERÊNCIAS EM ABNT — gera sob demanda (no clique) e copia.
+   11) REFERÊNCIAS EM ABNT — gera sob demanda (no clique) e copia.
    Não mostra as referências na tela; só copia formatado.
    ================================================================= */
 async function generateABNT(d, btn) {
@@ -1351,7 +1191,7 @@ async function generateABNT(d, btn) {
 }
 
 /* =================================================================
-   ESTUDO DE CASO — IA leve (sob demanda), não pesa na ficha principal
+   12) ESTUDO DE CASO — IA leve (sob demanda), não pesa na ficha principal
    ================================================================= */
 async function generateCase(d) {
   const out = $("#caseOut", els.content);
@@ -1522,6 +1362,9 @@ async function compararRaciocinio() {
   }
 }
 
+/* =================================================================
+   13) COPIAR / COMPARTILHAR (texto formatado)
+   ================================================================= */
 function dataToText(d) {
   const L = [];
   const list = a => (a && a.length) ? a.join(", ") : "—";
@@ -1587,7 +1430,7 @@ async function shareContent(d) {
 }
 
 /* =================================================================
-   10) HISTÓRICO & FAVORITOS (localStorage)
+   14) HISTÓRICO & FAVORITOS (localStorage)
    ================================================================= */
 const HKEY = "invictus.history";
 const FKEY = "invictus.favorites";
@@ -1752,7 +1595,7 @@ function timeAgo(ts) {
 }
 
 /* =================================================================
-   11) BUSCA POR VOZ (Web Speech API)
+   15) BUSCA POR VOZ (Web Speech API)
    ================================================================= */
 function initVoice() {
   if (!els.voice) return;
@@ -1776,7 +1619,7 @@ function initVoice() {
 }
 
 /* =================================================================
-   12) TEMA (claro/escuro) — nativo via prefers-color-scheme
+   16) TEMA (claro/escuro) — nativo via prefers-color-scheme
    ================================================================= */
 const THEME_COLOR = { dark: "#0B0E0D", light: "#F7F8F8" };
 
@@ -1810,95 +1653,40 @@ function initTheme() {
 }
 
 /* =================================================================
-   13) DEMONSTRAÇÃO OFFLINE (funciona sem chave de IA)
+   17) DEMONSTRAÇÃO OFFLINE (sem Worker configurado)
+   -----------------------------------------------------------------
+   As fichas moram em demo.js e só são baixadas se o site rodar sem
+   Worker. Com o Worker no ar — que é o caso do site publicado — este
+   caminho nunca é percorrido e o arquivo nunca sai da rede.
    ================================================================= */
-function getDemo(term) {
-  const key = term.trim().toLowerCase();
-  const match = Object.keys(DEMO).find(k => key.includes(k));
-  return match ? DEMO[match] : null;
+const VERSAO = (document.currentScript?.src.match(/[?&]v=([^&]+)/) || [])[1] || "";
+let demoCarregando = null;
+
+function carregarDemo() {
+  if (window.DEMO_INVICTUS) return Promise.resolve(window.DEMO_INVICTUS);
+  if (demoCarregando) return demoCarregando;
+  demoCarregando = new Promise(resolve => {
+    const tag = document.createElement("script");
+    // Reaproveita a versão do próprio script.js (?v=N) para o demo não ficar
+    // preso num cache antigo quando o resto do site for atualizado.
+    tag.src = "demo.js" + (VERSAO ? "?v=" + VERSAO : "");
+    tag.onload = () => resolve(window.DEMO_INVICTUS || null);
+    tag.onerror = () => resolve(null);   // sem demo é melhor que travar a busca
+    document.head.appendChild(tag);
+  });
+  return demoCarregando;
 }
 
-const DEMO = {
-  "hipertens": {
-    nome: "Hipertensão Arterial Sistêmica",
-    cid10: "I10", cid11: "BA00",
-    sinonimos: ["Pressão alta", "HAS"],
-    area_medica: "Cardiologia / Clínica Médica",
-    definicao: "Condição crônica caracterizada por níveis pressóricos persistentemente elevados (≥140/90 mmHg em consultório). É um dos principais fatores de risco cardiovascular modificáveis.",
-    sintomas_comuns: ["Geralmente assintomática", "Cefaleia occipital", "Tontura"],
-    sintomas_raros: ["Epistaxe", "Zumbido", "Visão turva"],
-    sinais_alerta: ["Dor torácica intensa", "Dispneia súbita", "Déficit neurológico (sugestivo de AVC)", "PA ≥180/120 com lesão de órgão-alvo"],
-    tratamento: {
-      padrao: ["Mudança de estilo de vida (dieta DASH, redução de sódio)", "Atividade física regular", "Controle de peso"],
-      medicamentos: ["IECA", "BRA", "Diuréticos tiazídicos", "Bloqueadores de canal de cálcio"],
-      complementares: ["Cessação do tabagismo", "Redução do consumo de álcool", "Manejo do estresse"],
-      prognostico: "Excelente quando controlada; o risco cardiovascular reduz significativamente com adesão ao tratamento."
-    },
-    diagnostico: {
-      laboratoriais: ["Função renal", "Eletrólitos", "Glicemia", "Perfil lipídico"],
-      imagem: ["ECG", "Ecocardiograma (avaliação de hipertrofia)"],
-      criterios: ["PA ≥140/90 mmHg em duas ou mais medições", "MAPA / MRPA para confirmação"]
-    },
-    complicacoes: ["Infarto do miocárdio", "AVC", "Insuficiência renal crônica", "Retinopatia hipertensiva", "Insuficiência cardíaca"],
-    variacoes: [],
-    diferenciais: ["Hipertensão do avental branco", "Feocromocitoma", "Hiperaldosteronismo primário", "Estenose de artéria renal"],
-    epidemiologia: {
-      prevalencia: "~30% dos adultos no Brasil",
-      faixa_etaria: "Mais comum acima dos 40 anos",
-      sexo: "Discreta predominância masculina até a meia-idade",
-      distribuicao_geografica: "Universal, maior em áreas urbanas"
-    },
-    fisiopatologia: {
-      simples: "A pressão dentro das artérias fica alta demais por muito tempo, forçando o coração e os vasos a trabalharem além do normal.",
-      avancada: "Resulta da interação entre débito cardíaco e resistência vascular periférica, modulada pelo sistema renina-angiotensina-aldosterona, atividade simpática, função endotelial e manejo renal de sódio. Disfunção endotelial e remodelamento vascular perpetuam a elevação pressórica."
-    },
-    referencias: ["Diretriz Brasileira de Hipertensão Arterial (SBC)", "Harrison's Principles of Internal Medicine", "UpToDate — Hypertension"]
-  },
-  "diabetes": {
-    nome: "Diabetes Mellitus",
-    cid10: "E10–E14", cid11: "5A10–5A14",
-    sinonimos: ["DM", "Açúcar no sangue alto"],
-    area_medica: "Endocrinologia",
-    definicao: "Grupo de doenças metabólicas caracterizadas por hiperglicemia crônica decorrente de defeitos na secreção e/ou ação da insulina.",
-    sintomas_comuns: ["Poliúria", "Polidipsia", "Polifagia", "Perda de peso", "Fadiga"],
-    sintomas_raros: ["Visão turva", "Infecções de repetição", "Cicatrização lenta"],
-    sinais_alerta: ["Hálito cetônico e respiração rápida (cetoacidose)", "Rebaixamento do nível de consciência", "Glicemia muito elevada com desidratação"],
-    tratamento: {
-      padrao: ["Educação em diabetes", "Dieta e atividade física", "Monitorização glicêmica"],
-      medicamentos: ["Insulina", "Metformina", "Inibidores de SGLT2", "Análogos de GLP-1"],
-      complementares: ["Acompanhamento nutricional", "Cuidados com os pés", "Avaliação oftalmológica periódica"],
-      prognostico: "Bom controle reduz drasticamente complicações; depende fortemente da adesão e do tipo."
-    },
-    diagnostico: {
-      laboratoriais: ["Glicemia de jejum ≥126 mg/dL", "HbA1c ≥6,5%", "Teste de tolerância à glicose"],
-      imagem: [],
-      criterios: ["Sintomas clássicos + glicemia aleatória ≥200 mg/dL", "Confirmação em segunda dosagem"]
-    },
-    complicacoes: ["Retinopatia", "Nefropatia", "Neuropatia", "Pé diabético", "Doença cardiovascular"],
-    variacoes: [
-      { nome: "Diabetes tipo 1", definicao: "Destruição autoimune das células beta pancreáticas, com deficiência absoluta de insulina.", transmissao: "", gravidade: "grave", tratamento: "Insulinoterapia obrigatória" },
-      { nome: "Diabetes tipo 2", definicao: "Resistência à insulina associada a déficit secretório progressivo.", transmissao: "", gravidade: "moderada", tratamento: "Estilo de vida, antidiabéticos orais e, eventualmente, insulina" },
-      { nome: "Diabetes gestacional", definicao: "Intolerância à glicose diagnosticada na gravidez.", transmissao: "", gravidade: "moderada", tratamento: "Dieta, monitorização e insulina se necessário" },
-      { nome: "MODY", definicao: "Diabetes monogênico de início precoce e herança autossômica dominante.", transmissao: "", gravidade: "leve", tratamento: "Variável conforme o subtipo genético" },
-      { nome: "LADA", definicao: "Diabetes autoimune latente do adulto, evolução mais lenta que o tipo 1.", transmissao: "", gravidade: "moderada", tratamento: "Progressão para insulina" }
-    ],
-    diferenciais: ["Diabetes insipidus", "Hipertireoidismo", "Síndrome de Cushing"],
-    epidemiologia: {
-      prevalencia: "~10% da população adulta brasileira",
-      faixa_etaria: "Tipo 1 na infância/adolescência; tipo 2 em adultos",
-      sexo: "Distribuição semelhante entre os sexos",
-      distribuicao_geografica: "Crescente em todo o mundo"
-    },
-    fisiopatologia: {
-      simples: "O corpo não consegue usar bem o açúcar do sangue, seja por falta de insulina, seja porque ela não funciona direito.",
-      avancada: "No tipo 1, autoimunidade destrói células beta (deficiência absoluta de insulina). No tipo 2, resistência periférica à insulina, disfunção de células beta, aumento da produção hepática de glicose e alterações em incretinas convergem para hiperglicemia sustentada."
-    },
-    referencias: ["Diretrizes da Sociedade Brasileira de Diabetes", "ADA Standards of Care", "Williams Textbook of Endocrinology"]
-  },
-};
+async function getDemo(term) {
+  const fichas = await carregarDemo();
+  if (!fichas) return null;
+  const key = term.trim().toLowerCase();
+  const match = Object.keys(fichas).find(k => key.includes(k));
+  return match ? fichas[match] : null;
+}
 
 /* =================================================================
-   14) LIGAÇÃO DE EVENTOS GLOBAIS
+   18) LIGAÇÃO DE EVENTOS GLOBAIS
    ================================================================= */
 function bindGlobalEvents() {
   // Busca
@@ -1968,7 +1756,7 @@ function updateSuggHighlight(items) {
 
 
 /* =================================================================
-   16) ANAMNESE ESTRUTURADA
+   19) ANAMNESE ESTRUTURADA
    -----------------------------------------------------------------
    A ideia é digitar o mínimo possível. Quase tudo é clique: o texto
    final é montado por modelo, de forma determinística — sem IA, sem
@@ -2510,7 +2298,7 @@ function ligarEventosAnamnese() {
 
 
 /* =================================================================
-   REPORTAR CONTEÚDO ERRADO
+   20) REPORTAR CONTEÚDO ERRADO
    -----------------------------------------------------------------
    Conteúdo gerado por IA erra — não é hipótese, é estatística. Sem um
    caminho para relatar, quem encontra um erro só desconfia em silêncio,
@@ -2627,7 +2415,7 @@ function ligarEventosReporte() {
 }
 
 /* =================================================================
-   CALCULADORAS E ESCORES CLÍNICOS
+   21) CALCULADORAS E ESCORES CLÍNICOS
    -----------------------------------------------------------------
    Tudo aqui é aritmética: nenhuma chamada de IA, custo zero, resposta
    instantânea e impossível de alucinar. É o mesmo princípio que já
@@ -3093,7 +2881,7 @@ function ligarEventosCalc() {
 }
 
 /* =================================================================
-   MODO SCRIPT — a mesma ficha, na ordem do raciocínio clínico
+   22) MODO SCRIPT — a mesma ficha, na ordem do raciocínio clínico
    -----------------------------------------------------------------
    O raciocínio clínico se apoia em conhecimento organizado como
    "scripts de doença": quem costuma ter, o que acontece no corpo, como
@@ -3169,7 +2957,7 @@ function limparPapel(card) {
 }
 
 /* =================================================================
-   ESTUDAR O QUE JÁ FOI PESQUISADO
+   23) ESTUDAR O QUE JÁ FOI PESQUISADO
    -----------------------------------------------------------------
    Bancos de questões concorrentes têm centenas de milhares de itens —
    competir em volume é perder. O que eles não fazem é gerar questão
@@ -3202,7 +2990,7 @@ function formatarTempo(ms) {
 }
 
 /* =================================================================
-   20) INICIALIZAÇÃO
+   24) INICIALIZAÇÃO
    ================================================================= */
 document.addEventListener("DOMContentLoaded", () => {
   initTheme();
