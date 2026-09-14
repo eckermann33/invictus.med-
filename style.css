@@ -1523,3 +1523,52 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 0 clamp(16px, 4vw, 40px)
   .refl__pular { display: block; margin: 10px 0 0; }
   .study__hist { width: 100%; justify-content: center; }
 }
+
+/* =================================================================
+   USO SEM INTERNET
+   -----------------------------------------------------------------
+   Duas peças: o aviso de que existe versão nova baixada, e a tarja que
+   marca uma ficha vinda do cache. A segunda é a que importa — conteúdo
+   médico velho parecendo recém-gerado é pior que não ter conteúdo.
+   ================================================================= */
+.aviso-versao {
+  position: fixed; inset: auto 16px 16px 16px; z-index: 80;
+  display: flex; align-items: center; gap: 12px;
+  max-width: 520px; margin-inline: auto;
+  padding: 12px 12px 12px 18px; border-radius: var(--r);
+  background: var(--panel-alto); border: 1px solid var(--glass-brd);
+  box-shadow: var(--shadow); color: var(--text-soft); font-size: 0.9rem;
+}
+.aviso-versao__txt { flex: 1; }
+.aviso-versao__btn {
+  min-height: 44px; padding: 0 16px; border-radius: var(--r-pill);
+  background: var(--blue); border: none; color: #fff;
+  font-size: 0.88rem; font-weight: 600; white-space: nowrap;
+}
+.aviso-versao__btn:hover { background: var(--blue-bright); }
+.aviso-versao__x {
+  display: grid; place-items: center; width: 44px; height: 44px;
+  background: transparent; border: none; color: var(--text-mut); border-radius: 50%;
+}
+.aviso-versao__x:hover { color: var(--text); background: var(--hairline); }
+
+.copia-salva {
+  display: flex; align-items: flex-start; gap: 10px;
+  margin-bottom: 18px; padding: 12px 16px; border-radius: var(--r);
+  background: color-mix(in srgb, var(--amber) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--amber) 38%, transparent);
+  color: var(--text-soft); font-size: 0.88rem; line-height: 1.5;
+}
+.copia-salva svg { color: var(--amber); flex-shrink: 0; margin-top: 2px; }
+.copia-salva b { color: var(--text); }
+
+@media (max-width: 560px) {
+  .aviso-versao { padding-left: 14px; font-size: 0.85rem; }
+}
+
+/* Numa impressão, a tarja precisa ir junto: a folha impressa sobrevive
+   à sessão e não tem como avisar que o conteúdo envelheceu. */
+@media print {
+  .aviso-versao { display: none; }
+  .copia-salva { border: 1px solid #999; background: none; color: #000; }
+}

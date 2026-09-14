@@ -314,6 +314,45 @@ function isFichaValida(d) {
   );
 }
 
+/* ---------- Fichas guardadas para ler sem internet ----------
+   O service worker guarda os arquivos do site; as fichas não passam por
+   ele de propósito (são POST, e cache de conteúdo médico sem aviso é
+   pedir problema). Ficam aqui, com a data de quando foram geradas, e a
+   tela avisa que é cópia salva sempre que uma delas for usada. */
+const CACHE_FICHAS = "invictus.fichas";
+const MAX_FICHAS_GUARDADAS = 30;
+
+const chaveFicha = t => String(t || "").trim().toLowerCase();
+
+function guardarFicha(termo, ficha) {
+  const chave = chaveFicha(ficha?.nome || termo);
+  if (!chave) return;
+  const guardadas = store.get(CACHE_FICHAS, {});
+  if (!guardadas || typeof guardadas !== "object") return;
+  guardadas[chave] = { ficha, ts: Date.now() };
+
+  // Sem teto, o localStorage estoura (5 MB) e para de gravar em silêncio —
+  // inclusive o histórico e os favoritos, que dividem o mesmo espaço.
+  const chaves = Object.keys(guardadas)
+    .sort((a, b) => (guardadas[b]?.ts || 0) - (guardadas[a]?.ts || 0));
+  const podadas = {};
+  for (const k of chaves.slice(0, MAX_FICHAS_GUARDADAS)) podadas[k] = guardadas[k];
+  store.set(CACHE_FICHAS, podadas);
+}
+
+function buscarFichaGuardada(termo) {
+  const guardadas = store.get(CACHE_FICHAS, {});
+  if (!guardadas || typeof guardadas !== "object") return null;
+  const chave = chaveFicha(termo);
+  // Bate o nome exato primeiro; depois aceita "hipertensão" achando
+  // "Hipertensão Arterial Sistêmica", que é como o nome volta da IA.
+  const achado = guardadas[chave]
+    || Object.entries(guardadas)
+         .filter(([k]) => k.includes(chave) || chave.includes(k))
+         .sort((a, b) => (b[1]?.ts || 0) - (a[1]?.ts || 0))[0]?.[1];
+  return (achado && isFichaValida(achado.ficha)) ? achado : null;
+}
+
 async function fetchAnalysis(termo, signal) {
   if (!isProxyConfigured()) {
     // Fork sem Worker configurado: mostra a ficha de demonstração, se houver
@@ -322,9 +361,18 @@ async function fetchAnalysis(termo, signal) {
     if (demo) return demo;
     throw errWithCode("NO_PROXY", "NO_PROXY");
   }
-  const data = await postProxy({ termo }, signal); // o Worker devolve a ficha pronta
-  if (!isFichaValida(data)) throw errWithCode("BAD_SHAPE", "FICHA");
-  return data;
+  try {
+    const data = await postProxy({ termo }, signal); // o Worker devolve a ficha pronta
+    if (!isFichaValida(data)) throw errWithCode("BAD_SHAPE", "FICHA");
+    guardarFicha(termo, data);
+    return data;
+  } catch (err) {
+    // Cancelamento é o usuário buscando outra coisa, não falta de rede.
+    if (codeOf(err) === "CANCELLED") throw err;
+    const guardada = buscarFichaGuardada(termo);
+    if (guardada) return { ...guardada.ficha, _guardadaEm: guardada.ts };
+    throw err;
+  }
 }
 
 /* Mensagens que se alternam enquanto a IA "pensa" */
@@ -444,9 +492,18 @@ function marcarNoEndereco(termo, substituir = false) {
   else history.pushState(estado, "", u.toString());
 }
 
-/* Abre a ficha pedida no endereço, se houver. */
+/* Abre a ficha pedida no endereço, se houver.
+   Também atende os atalhos do app instalado (?abrir=anamnese|escores),
+   que são o caminho mais curto para as duas telas que funcionam sem
+   internet nenhuma. */
 function abrirPeloEndereco() {
-  const termo = new URLSearchParams(location.search).get("q");
+  const params = new URLSearchParams(location.search);
+
+  const atalho = params.get("abrir");
+  if (atalho === "anamnese") { abrirAnamnese(); return true; }
+  if (atalho === "escores" || atalho === "calc") { abrirCalculadoras(); return true; }
+
+  const termo = params.get("q");
   const limpo = (termo || "").trim().slice(0, CONFIG.MAX_TERM_LEN);
   if (!limpo) return false;
   if (els.input) els.input.value = limpo;
@@ -702,6 +759,21 @@ function listaReferencias(refs) {
     </p>`;
 }
 
+/* Uma ficha vinda do cache precisa se anunciar. Conteúdo médico velho
+   parecendo recém-gerado é pior do que não ter conteúdo nenhum — e quem
+   está sem sinal no corredor do hospital não tem como desconfiar sozinho. */
+function avisoCopiaSalva(d) {
+  if (!d || !d._guardadaEm) return "";
+  const quando = new Date(d._guardadaEm);
+  const data = quando.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
+  const hora = quando.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  return `<div class="copia-salva" role="status">
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 8v5l3 2M3.05 11a9 9 0 1 1 .5 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 4v4h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span><b>Cópia salva</b> de ${escapeHTML(data)}, ${escapeHTML(hora)}.
+    Sem conexão agora — quando voltar, busque de novo para ver a versão atual.</span>
+  </div>`;
+}
+
 function renderResult(d) {
   const isFav = isFavorite(d.nome);
   const isFarmaco = d.tipo === "farmaco" && d.farmaco;
@@ -735,6 +807,7 @@ function renderResult(d) {
         Estudar isto
       </button>
     </div>
+    ${avisoCopiaSalva(d)}
     <section class="fiche-head" id="identificacao">
       ${areaLabel ? `<span class="fiche-head__area">${escapeHTML(areaLabel)}</span>` : ""}
       <h1 class="fiche-head__name">${escapeHTML(d.nome || "Resultado")}</h1>
@@ -3123,6 +3196,49 @@ function formatarTempo(ms) {
 }
 
 /* =================================================================
+   INSTALAÇÃO E USO SEM INTERNET (service worker)
+   -----------------------------------------------------------------
+   Metade do site não precisa de rede: as calculadoras são aritmética, a
+   anamnese monta o texto no navegador, favoritos e histórico estão no
+   localStorage. O service worker é o que faz o site abrir para chegar
+   nelas quando o wi-fi do hospital cai.
+   ================================================================= */
+function registrarServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+  // file:// não tem contexto seguro; registrar ali só gera erro no console.
+  if (location.protocol !== "https:" && location.hostname !== "localhost"
+      && location.hostname !== "127.0.0.1") return;
+
+  navigator.serviceWorker.register("sw.js").then(reg => {
+    // Sem etapa de build, uma versão nova pode subir a qualquer momento.
+    // Avisar é melhor que recarregar por conta própria no meio de uma leitura.
+    reg.addEventListener("updatefound", () => {
+      const novo = reg.installing;
+      if (!novo) return;
+      novo.addEventListener("statechange", () => {
+        if (novo.state === "installed" && navigator.serviceWorker.controller) {
+          mostrarAvisoDeVersao(novo);
+        }
+      });
+    });
+  }).catch(() => { /* sem offline é degradação aceitável, não erro */ });
+}
+
+function mostrarAvisoDeVersao(trabalhador) {
+  const barra = $("#avisoVersao");
+  if (!barra) return;
+  show(barra);
+  $("#avisoVersaoBtn")?.addEventListener("click", () => {
+    trabalhador.postMessage("atualizar-agora");
+    // O controllerchange chega quando o worker novo assume; só então
+    // recarregar entrega de fato a versão nova.
+    navigator.serviceWorker.addEventListener("controllerchange",
+      () => location.reload(), { once: true });
+  }, { once: true });
+  $("#avisoVersaoFechar")?.addEventListener("click", () => hide(barra), { once: true });
+}
+
+/* =================================================================
    24) INICIALIZAÇÃO
    ================================================================= */
 document.addEventListener("DOMContentLoaded", () => {
@@ -3132,6 +3248,7 @@ document.addEventListener("DOMContentLoaded", () => {
   ligarEventosAnamnese();
   ligarEventosReporte();
   ligarEventosCalc();
+  registrarServiceWorker();
   abrirPeloEndereco();
   // Voltar/avançar do navegador acompanham a ficha em vez de sair do site.
   window.addEventListener("popstate", () => {

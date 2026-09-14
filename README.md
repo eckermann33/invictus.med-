@@ -163,6 +163,8 @@ se não carregar, o botão de PDF cai sozinho para a janela de impressão.
 | `style.css` | tokens de cor, tema claro/escuro, responsivo e estilos de impressão |
 | `script.js` | busca, chamadas à IA, renderização, histórico, favoritos, voz e exportação |
 | `demo.js` | duas fichas de exemplo, carregadas só quando não há Worker |
+| `sw.js` | o service worker que faz o site abrir sem internet |
+| `manifest.webmanifest` | o que o navegador lê para instalar o site como app |
 | `proxy-worker.example.js` | o Cloudflare Worker que guarda a chave da IA |
 
 A chave da IA nunca chega ao navegador. Quem fala com o modelo é um Cloudflare
@@ -203,8 +205,10 @@ Se for mexer, três coisas que não convém quebrar:
   Resposta de modelo é conteúdo não confiável, sem exceção.
 - Toda chamada de rede vai por `fetchWithTimeout` / `postProxy`, que já cuidam de
   prazo, cancelamento e código de erro.
-- Ao editar `style.css` ou `script.js`, incremente o `?v=` no `index.html`, senão
-  os navegadores continuam servindo a versão velha.
+- Ao editar `style.css` ou `script.js`, incremente o `?v=` no `index.html` **e o
+  `VERSAO` no `sw.js` junto**, senão o service worker segue servindo o cache
+  antigo e a atualização não chega a quem instalou. O `testes/versao.test.mjs`
+  existe para pegar exatamente esse esquecimento.
 
 A acessibilidade também é para manter: link de pular para a busca, campo como
 `combobox` com navegação por setas, painel lateral como diálogo modal com foco
@@ -301,11 +305,25 @@ a janela de impressão. O site continua funcionando.
 
 </details>
 
+## Dá para instalar
+
+O site é um PWA: dá para adicionar à tela inicial e abrir como aplicativo, com
+atalhos diretos para a anamnese e para os escores. Isso importa porque metade do
+site não precisa de internet nenhuma — as calculadoras são aritmética, a anamnese
+monta o texto no próprio navegador, favoritos e histórico já ficam salvos ali.
+Sem um service worker, nada disso abre quando o wi-fi do hospital cai.
+
+As últimas 30 fichas consultadas também ficam guardadas para leitura sem conexão.
+Quando uma delas aparece, uma tarja diz de quando é: ficha médica antiga com cara
+de recém-gerada é pior que ficha nenhuma, e quem está sem sinal no corredor não
+tem como desconfiar sozinho.
+
 ## O que ainda falta
 
-Compartilhar ficha por link, com o termo na URL. Guardar as buscas recentes para
-não consultar a IA duas vezes pela mesma coisa. Leitura offline das fichas já
-vistas. E, quando o `script.js` crescer mais um pouco, quebrar ele em módulos.
+Repetição espaçada nos flashcards, para o que você errou voltar antes do que você
+acertou. Guardar as buscas recentes no servidor, para não consultar a IA duas
+vezes pela mesma coisa. E, quando o `script.js` crescer mais um pouco, quebrar ele
+em módulos.
 
 ---
 

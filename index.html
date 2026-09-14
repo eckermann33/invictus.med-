@@ -49,9 +49,27 @@
           href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" />
   </noscript>
 
-  <link rel="stylesheet" href="style.css?v=20" />
+  <!-- Instalável como app: o atalho na tela inicial abre as calculadoras e a
+       anamnese mesmo sem internet, que é quando elas costumam fazer falta. -->
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-title" content="Invictus.Med" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+
+  <link rel="stylesheet" href="style.css?v=21" />
 </head>
 <body>
+
+  <!-- Aparece só quando o service worker baixou uma versão nova. Recarregar
+       sozinho no meio de uma leitura seria pior que esperar o clique. -->
+  <div class="aviso-versao" id="avisoVersao" role="status" hidden>
+    <span class="aviso-versao__txt">Uma versão nova do site foi baixada.</span>
+    <button class="aviso-versao__btn" id="avisoVersaoBtn" type="button">Atualizar</button>
+    <button class="aviso-versao__x" id="avisoVersaoFechar" type="button" aria-label="Dispensar aviso de atualização">
+      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </button>
+  </div>
 
   <a class="skip-link" href="#searchInput">Pular para a busca</a>
 
@@ -387,6 +405,6 @@
        Sobre travar a versão com SRI (integrity), veja o README. -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"
           crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
-  <script src="script.js?v=20" defer></script>
+  <script src="script.js?v=21" defer></script>
 </body>
 </html>
