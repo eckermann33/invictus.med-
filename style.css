@@ -1620,3 +1620,79 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 0 clamp(16px, 4vw, 40px)
   .aviso-versao { display: none; }
   .copia-salva { border: 1px solid #999; background: none; color: #000; }
 }
+
+/* =================================================================
+   POSOLOGIA
+   -----------------------------------------------------------------
+   Cartão dentro do tratamento. O aviso vem primeiro e em âmbar: é a
+   única parte do site que, se lida errada, pode acabar num paciente.
+   ================================================================= */
+.poso-bloco { margin-top: 22px; padding-top: 20px; border-top: 1px solid var(--hairline); }
+.poso-btn {
+  min-height: 44px; padding: 0 18px; border-radius: var(--r-pill);
+  background: transparent; border: 1px solid var(--blue); color: var(--blue-bright);
+  font-size: 0.86rem; font-weight: 600; cursor: pointer;
+  transition: background 0.15s var(--ease);
+}
+.poso-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--blue) 14%, transparent); }
+.poso-btn:disabled { opacity: 0.6; cursor: default; }
+.poso-btn__nota { margin-top: 8px; color: var(--text-mut); font-size: 0.78rem; }
+.poso-out { margin-top: 18px; }
+
+.poso-aviso {
+  display: flex; gap: 11px; align-items: flex-start;
+  padding: 14px 16px; border-radius: var(--r); margin-bottom: 16px;
+  background: color-mix(in srgb, var(--amber) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--amber) 42%, transparent);
+  color: var(--text-soft); font-size: 0.85rem; line-height: 1.55;
+}
+.poso-aviso svg { color: var(--amber); flex-shrink: 0; margin-top: 1px; }
+.poso-aviso b { color: var(--text); }
+
+.poso-lista { list-style: none; display: grid; gap: 12px; }
+.poso-item {
+  padding: 16px 18px; border-radius: var(--r);
+  background: var(--panel-alto); border: 1px solid var(--hairline);
+}
+.poso-item__cab { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin-bottom: 12px; }
+.poso-item__nome { font-family: var(--font-display); font-size: 1rem; font-weight: 600; color: var(--text); }
+.poso-item__classe {
+  padding: 2px 9px; border-radius: var(--r-pill);
+  background: var(--bg-deep); color: var(--text-mut); font-size: 0.72rem; font-weight: 500;
+}
+
+/* Rótulo à esquerda, valor à direita: lê como bula, não como parágrafo. */
+.poso-campo {
+  display: grid; grid-template-columns: 118px 1fr; gap: 12px;
+  padding: 6px 0; color: var(--text-soft); font-size: 0.87rem; line-height: 1.5;
+}
+.poso-campo + .poso-campo { border-top: 1px dashed var(--hairline); }
+.poso-campo__r { color: var(--text-mut); font-size: 0.8rem; font-weight: 600; }
+
+.poso-item__bula {
+  display: inline-block; margin-top: 12px;
+  color: var(--blue-bright); font-size: 0.8rem; font-weight: 600; text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--blue) 45%, transparent);
+}
+.poso-item__bula:hover { border-bottom-color: var(--blue); }
+
+.poso-obs { margin-top: 14px; color: var(--text-mut); font-size: 0.84rem; line-height: 1.55; }
+.poso-copiar {
+  margin-top: 16px; min-height: 44px; padding: 0 16px; border-radius: var(--r-pill);
+  background: transparent; border: 1px solid var(--glass-brd); color: var(--text-soft);
+  font-size: 0.82rem; font-weight: 600; cursor: pointer;
+}
+.poso-copiar:hover { border-color: var(--blue); color: var(--text); }
+
+@media (max-width: 560px) {
+  /* Duas colunas em 360px espremem o valor em três palavras por linha. */
+  .poso-campo { grid-template-columns: 1fr; gap: 2px; }
+}
+
+/* Na impressão o aviso tem que ir junto: a folha sai do site e vai para a
+   mesa de alguém sem nada que lembre de onde veio. */
+@media print {
+  .poso-btn, .poso-btn__nota, .poso-copiar { display: none; }
+  .poso-aviso { border: 1px solid #000; background: none; color: #000; }
+  .poso-item { border: 1px solid #ccc; background: none; }
+}
