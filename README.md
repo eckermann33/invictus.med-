@@ -86,9 +86,23 @@ média por questão.
 
 ## Calculadoras e escores
 
-Onze escores clínicos que os livros mandam decorar e ninguém decora:
-CHA₂DS₂-VASc, HAS-BLED, Wells para TVP, CURB-65, qSOFA, Child-Pugh, Glasgow,
-clearance de creatinina, IMC, superfície corporal e carga tabágica.
+Vinte e nove escores e calculadoras que os livros mandam decorar e ninguém
+decora, agrupados por especialidade e com filtro por nome:
+
+| Área | O que tem |
+| --- | --- |
+| Geral | IMC, superfície corporal, peso ideal e ajustado |
+| Cardiologia | CHA₂DS₂-VASc, HAS-BLED, HEART, TIMI |
+| Emergência | qSOFA, Wells (TVP), Wells (TEP), PERC, Alvarado |
+| Nefrologia | Clearance de creatinina, TFG (CKD-EPI 2021), ânion gap, sódio e cálcio corrigidos |
+| Pneumologia | CURB-65, carga tabágica |
+| Endocrinologia | HOMA-IR, HbA1c em glicemia média |
+| Neurologia | Glasgow, ABCD² |
+| Infectologia | Centor / McIsaac |
+| Gastroenterologia | Child-Pugh |
+| Pediatria | Apgar |
+| Gineco e obstetrícia | Idade gestacional e DPP |
+| Psiquiatria | PHQ-9, GAD-7 |
 
 Essa parte **não usa IA nenhuma**. É aritmética rodando no seu navegador:
 resultado na hora, de graça, funciona sem internet e é impossível de alucinar.
@@ -99,9 +113,12 @@ E o peso de cada item fica visível ao lado dele — porque "idade ≥ 75 vale 2
 pontos" é justamente o tipo de coisa que se esquece na hora da prova.
 
 Numa calculadora clínica, errar a conta em silêncio é o pior defeito possível —
-por isso as partes que são pura aritmética têm teste automatizado rodando contra
-o próprio `script.js`, e não contra uma cópia: `node testes/revisao.test.mjs`
-cobre o agendamento das revisões, e `node testes/versao.test.mjs` cobre o cache.
+por isso cada fórmula tem teste automatizado com valores conhecidos, rodando
+contra o próprio `script.js` e não contra uma cópia: `node testes/escores.test.mjs`.
+São 90 verificações, incluindo uma que roda todos os escores de ponta a ponta só
+para garantir que nenhum devolve `NaN`, que é o jeito silencioso de uma conta
+errar. As outras duas suítes cobrem o agendamento das revisões
+(`testes/revisao.test.mjs`) e a sincronia do cache (`testes/versao.test.mjs`).
 
 ## A aba de anamnese
 
