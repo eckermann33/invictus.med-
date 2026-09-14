@@ -1629,6 +1629,40 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 0 clamp(16px, 4vw, 40px)
 .poso-btn:disabled { opacity: 0.6; cursor: default; }
 .poso-out { margin-top: 18px; }
 
+/* ---------- Doses na ficha de um fármaco ---------- */
+.poso-bloco--farmaco { margin-top: 0; padding-top: 0; border-top: none; }
+
+/* Indicação à esquerda, dose à direita: a leitura é de varredura, procurando
+   uma indicação específica — não de parágrafo. */
+/* padding-left: 0 porque o recuo herdado do <ul> desalinharia a indicação
+   do rótulo "Por indicação" logo acima. */
+.dose-lista { list-style: none; padding-left: 0; display: grid; gap: 2px; margin-bottom: 18px; }
+.dose-linha {
+  display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: baseline;
+  padding: 11px 0; border-bottom: 1px dashed var(--hairline);
+}
+.dose-linha:last-child { border-bottom: none; }
+.dose-linha__ind { color: var(--text-soft); font-size: 0.9rem; line-height: 1.45; }
+.dose-linha__val { text-align: right; white-space: nowrap; }
+.dose-linha__val b { color: var(--text); font-size: 0.95rem; font-weight: 600; }
+.dose-linha__int { display: block; color: var(--text-mut); font-size: 0.78rem; margin-top: 2px; }
+
+.dose-extra {
+  padding: 14px 16px; border-radius: var(--r); margin-bottom: 4px;
+  background: var(--panel-alto); border: 1px solid var(--hairline);
+}
+
+/* Link e botão na mesma linha, mas com respiro e podendo quebrar no celular. */
+.dose-acoes { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; margin-top: 16px; }
+.dose-acoes .poso-copiar, .dose-acoes .poso-item__bula { margin-top: 0; }
+
+@media (max-width: 560px) {
+  /* Em 360px a coluna da dose some se ficar à direita. */
+  .dose-linha { grid-template-columns: 1fr; gap: 3px; }
+  .dose-linha__val { text-align: left; white-space: normal; }
+  .dose-linha__int { display: inline; margin-left: 8px; margin-top: 0; }
+}
+
 .poso-lista { list-style: none; display: grid; gap: 12px; }
 .poso-item {
   padding: 16px 18px; border-radius: var(--r);

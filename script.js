@@ -719,6 +719,16 @@ function buildDrugSections(d) {
     S.push({ id: "indicacoes", label: "Indicações", html: h });
   }
 
+  // Doses logo depois das indicações: numa ficha de fármaco é o que a pessoa
+  // veio buscar. Sob demanda pelo mesmo motivo da posologia das doenças — a
+  // ficha já anda no limite de tokens do modelo.
+  S.push({ id: "doses", label: "Doses", html: `
+    <div class="card__head"><span class="card__ico">${ICON.treat}</span><h2 class="card__title">Doses usuais</h2></div>
+    <div class="poso-bloco poso-bloco--farmaco">
+      <button class="poso-btn" id="btnDosesFarmaco" type="button">Ver doses usuais</button>
+      <div class="poso-out" id="dosesOut" hidden></div>
+    </div>` });
+
   if (has(f.mecanismo_simples) || has(f.mecanismo_avancado)) {
     S.push({ id: "mecanismo", label: "Mecanismo", html: `
       <div class="card__head"><span class="card__ico">${ICON.fisio}</span><h2 class="card__title">Mecanismo de ação</h2></div>
@@ -894,6 +904,9 @@ function bindResultEvents(d) {
 
   const btnPoso = $("#btnPosologia", els.content);
   if (btnPoso) btnPoso.addEventListener("click", () => gerarPosologia(d, btnPoso));
+
+  const btnDoses = $("#btnDosesFarmaco", els.content);
+  if (btnDoses) btnDoses.addEventListener("click", () => gerarDosesFarmaco(d, btnDoses));
 
   // Abas de fisiopatologia
   $$(".tab", els.content).forEach(tab => {
@@ -1582,6 +1595,94 @@ function linhaPosologia(m) {
     <a class="poso-item__bula" target="_blank" rel="noopener noreferrer"
        href="https://consultas.anvisa.gov.br/#/bulario/q/?nomeProduto=${busca}">Bula na Anvisa</a>
   </li>`;
+}
+
+/* ---------- Doses de um fármaco pesquisado direto ----------
+   Quando a busca é por um remédio, e não por uma doença, o formato útil
+   muda: em vez de "quais fármacos se usa nesta condição", a pergunta é
+   "quanto se dá deste aqui, e para quê". Daí a tabela sair por indicação,
+   com as apresentações que existem e a dose máxima — que é justamente o
+   número que não se acha no meio de um parágrafo. */
+function linhaDose(dose) {
+  const ind = String(dose.indicacao || "").trim();
+  const valor = String(dose.dose || dose.faixa || "").trim();
+  if (!ind && !valor) return "";
+  return `<li class="dose-linha">
+    <span class="dose-linha__ind">${escapeHTML(ind || "Uso geral")}</span>
+    <span class="dose-linha__val">
+      ${valor ? `<b>${escapeHTML(valor)}</b>` : ""}
+      ${dose.intervalo ? `<span class="dose-linha__int">${escapeHTML(String(dose.intervalo))}</span>` : ""}
+    </span>
+  </li>`;
+}
+
+async function gerarDosesFarmaco(d, btn) {
+  const out = $("#dosesOut", els.content);
+  const original = btn ? btn.textContent : "";
+  if (btn) { btn.disabled = true; btn.textContent = "Buscando doses…"; }
+
+  try {
+    const dados = await postProxy({ modo: "posologia", tipo: "farmaco", termo: d.nome });
+
+    const doses = (Array.isArray(dados.doses) ? dados.doses : []).map(linhaDose).filter(Boolean);
+    if (!doses.length) throw errWithCode("vazio", "VAZIO");
+
+    const ficha = [];
+    const campo = (rotulo, valor) => {
+      if (!valor || !String(valor).trim()) return;
+      ficha.push(`<div class="poso-campo"><span class="poso-campo__r">${rotulo}</span><span>${escapeHTML(String(valor))}</span></div>`);
+    };
+    campo("Via", dados.via);
+    campo("Dose máxima", dados.dose_maxima);
+    campo("Ajuste renal", dados.ajuste_renal);
+    campo("Ajuste hepático", dados.ajuste_hepatico);
+
+    if (out) {
+      const apres = (Array.isArray(dados.apresentacoes) ? dados.apresentacoes : []).filter(Boolean);
+      out.innerHTML = `
+        ${apres.length ? `<p class="sub">Apresentações</p>${chipList(apres)}` : ""}
+        <p class="sub">Por indicação</p>
+        <ul class="dose-lista">${doses.join("")}</ul>
+        ${ficha.length ? `<div class="dose-extra">${ficha.join("")}</div>` : ""}
+        ${dados.observacoes ? `<p class="poso-obs">${escapeHTML(String(dados.observacoes))}</p>` : ""}
+        <div class="dose-acoes">
+          <a class="poso-item__bula" target="_blank" rel="noopener noreferrer"
+             href="https://consultas.anvisa.gov.br/#/bulario/q/?nomeProduto=${encodeURIComponent(d.nome || "")}">Bula na Anvisa</a>
+          <button class="poso-copiar" id="btnDosesCopiar" type="button">Copiar doses</button>
+        </div>`;
+      show(out);
+      $("#btnDosesCopiar", out)?.addEventListener("click", async () => {
+        toast(await copyToClipboard(dosesEmTexto(d, dados))
+          ? "Doses copiadas." : "Não foi possível copiar.");
+      });
+    }
+    if (btn) { btn.disabled = false; btn.textContent = "Buscar de novo"; }
+  } catch (e) {
+    toast("Não consegui buscar as doses agora. Tente novamente em instantes.");
+    if (btn) { btn.disabled = false; btn.textContent = original; }
+  }
+}
+
+function dosesEmTexto(d, dados) {
+  const L = [`DOSES USUAIS — ${d.nome || ""}`, ""];
+  const apres = (dados.apresentacoes || []).filter(Boolean);
+  if (apres.length) L.push(`Apresentações: ${apres.join(", ")}`, "");
+  for (const x of (dados.doses || [])) {
+    const ind = String(x.indicacao || "Uso geral").trim();
+    const valor = String(x.dose || x.faixa || "").trim();
+    if (!valor) continue;
+    L.push(`${ind}: ${valor}${x.intervalo ? ` — ${x.intervalo}` : ""}`);
+  }
+  L.push("");
+  const par = (r, v) => { if (v && String(v).trim()) L.push(`${r}: ${String(v).trim()}`); };
+  par("Via", dados.via);
+  par("Dose máxima", dados.dose_maxima);
+  par("Ajuste renal", dados.ajuste_renal);
+  par("Ajuste hepático", dados.ajuste_hepatico);
+  if (dados.observacoes) L.push("", String(dados.observacoes));
+  L.push("", "— Doses usuais de adulto, geradas por IA para estudo. Não é prescrição.",
+         "Confira na bula e no protocolo do serviço antes de qualquer uso.");
+  return L.join("\n");
 }
 
 async function gerarPosologia(d, btn) {
