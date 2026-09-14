@@ -46,6 +46,13 @@ sob demanda: **quiz** de múltipla escolha com correção e explicação, **flas
 para revisão, **resumo** em tópicos e **mapa mental**. Cada uma só é gerada quando
 você clica — nada fica pesando enquanto você não pede.
 
+Os flashcards não são descartáveis. Depois de revelar a resposta você diz como foi
+— errei, difícil ou fácil — e a carta é agendada pelo SM-2, o mesmo algoritmo que
+o Anki usa na base: o que você errou volta ainda na sessão, o que você acertou
+volta daqui a dias, e o intervalo cresce conforme você acerta. O botão **Revisar**
+mostra quantas venceram e é o único da aba que não chama a IA — agendamento é
+conta, então funciona sem internet e sem custo.
+
 Tem também um **estudo de caso**, e ele funciona em duas etapas de propósito.
 Primeiro você vê o paciente — história, exame físico, exames — e precisa
 escrever sua hipótese, o que a sustenta e o que você não descarta. Só depois a
@@ -320,11 +327,9 @@ tem como desconfiar sozinho.
 
 ## O que ainda falta
 
-Repetição espaçada nos flashcards, para o que você errou voltar antes do que você
-acertou. Guardar as buscas recentes no servidor, para não consultar a IA duas
-vezes pela mesma coisa. E, quando o `script.js` crescer mais um pouco, quebrar ele
-em módulos.
+Guardar as buscas recentes no servidor, para não consultar a IA duas vezes pela
+mesma coisa. E, quando o `script.js` crescer mais um pouco, quebrar ele em módulos.
 
 ---
 
-Feito por [@_eckermann](https://www.instagram.com/_eckermann) · beta 1.0
+Feito por [@_eckermann](https://www.instagram.com/_eckermann) · beta 2

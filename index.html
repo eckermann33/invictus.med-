@@ -57,7 +57,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="mobile-web-app-capable" content="yes" />
 
-  <link rel="stylesheet" href="style.css?v=21" />
+  <link rel="stylesheet" href="style.css?v=22" />
 </head>
 <body>
 
@@ -249,6 +249,10 @@
         <button class="study-tool" type="button" data-modo="flashcards">Flashcards</button>
         <button class="study-tool" type="button" data-modo="resumo">Resumo</button>
         <button class="study-tool" type="button" data-modo="mapa">Mapa mental</button>
+        <!-- Único que não chama a IA: mostra o que já está salvo e venceu. -->
+        <button class="study-tool study-tool--revisar" type="button" data-modo="revisar">
+          Revisar<span class="study-tool__n" hidden></span>
+        </button>
       </div>
       <p class="study__hint">Escolha uma ferramenta acima. Cada uma é gerada na hora, só quando você pede.</p>
       <div class="study__out" id="studyOut"></div>
@@ -329,7 +333,7 @@
         Verifique sempre fontes primárias antes de qualquer decisão clínica.
       </p>
       <p class="footer__brand">Invictus<span class="brand__dot">.</span>Med · Referência Clínica Inteligente
-        <span class="footer__beta">beta 1.0</span>
+        <span class="footer__beta">beta 2</span>
       </p>
       <p class="footer__beta-note">Gratuito durante o período beta. Futuramente o acesso poderá se tornar pago, para custear recursos melhores e elevar a qualidade das análises.</p>
       <p class="footer__feedback">Em beta — encontrou um erro ou tem uma sugestão? <a href="https://www.instagram.com/_eckermann" target="_blank" rel="noopener noreferrer">Fale comigo</a>.</p>
@@ -405,6 +409,6 @@
        Sobre travar a versão com SRI (integrity), veja o README. -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"
           crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
-  <script src="script.js?v=21" defer></script>
+  <script src="script.js?v=22" defer></script>
 </body>
 </html>

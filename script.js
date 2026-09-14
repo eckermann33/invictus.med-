@@ -1108,6 +1108,7 @@ function openStudy(tema) {
   // Esconde TODAS as outras telas e mostra só a de estudo
   hide(els.results); hide(els.empty); hide(els.notice); hide(els.loader); hide(els.hero);
   show(els.studyView);
+  atualizarContadorRevisao();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -1121,6 +1122,15 @@ function closeStudy() {
 async function generateStudy(modo) {
   const tema = (els.studyTema.value || "").trim();
   const out = els.studyOut;
+
+  // Revisar é o único modo que não passa pela IA: as cartas já estão salvas
+  // e o agendamento é aritmética. Por isso também não exige tema.
+  if (modo === "revisar") {
+    $$(".study-tool", els.studyView).forEach(b => b.classList.toggle("is-active", b.dataset.modo === modo));
+    renderRevisao(out);
+    return;
+  }
+
   if (!tema) { toast("Digite um tema para estudar."); els.studyTema.focus(); return; }
 
   // Marca o botão ativo e mostra carregando
@@ -1132,7 +1142,7 @@ async function generateStudy(modo) {
     const data = await postProxy({ modo, termo: tema.slice(0, CONFIG.MAX_TERM_LEN) });
 
     if (modo === "quiz") renderQuiz(data.perguntas || [], out);
-    else if (modo === "flashcards") renderFlashcards(data.cards || [], out);
+    else if (modo === "flashcards") renderFlashcards(data.cards || [], out, tema);
     else if (modo === "resumo") renderResumo(data, out);
     else if (modo === "mapa") renderMapa(data, out);
   } catch (e) {
@@ -1196,23 +1206,239 @@ function renderQuiz(perguntas, out) {
   });
 }
 
-function renderFlashcards(cards, out) {
+/* =================================================================
+   REPETIÇÃO ESPAÇADA (SM-2)
+   -----------------------------------------------------------------
+   Os flashcards eram descartáveis: a IA gerava, o aluno lia, e nada
+   ficava. O que faz flashcard funcionar não é lê-lo uma vez — é revê-lo
+   no intervalo certo, e o que você errou voltar antes do que acertou.
+
+   O algoritmo é o SM-2, o mesmo do Anki na base. Roda inteiro aqui, sem
+   chamada de rede: é aritmética, então funciona sem internet e não custa
+   nada. A IA continua responsável só por gerar as cartas.
+
+   Três notas em vez das quatro do Anki. "Quase acertei" e "acertei com
+   esforço" são difíceis de separar na hora, e a diferença some no ruído.
+   ================================================================= */
+const REVKEY = "invictus.revisao";
+const EF_MINIMA = 1.3;      // abaixo disto o intervalo praticamente não cresce
+const MAX_CARTAS = 400;     // teto de espaço no localStorage
+
+const NOTAS = {
+  errei:   { q: 0, rotulo: "Errei",   dica: "Volta já nesta sessão" },
+  dificil: { q: 3, rotulo: "Difícil", dica: "Volta logo" },
+  facil:   { q: 5, rotulo: "Fácil",   dica: "Volta mais tarde" },
+};
+
+const hoje = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); };
+const DIA = 86400000;
+
+/* Identidade da carta: a pergunta, normalizada. Duas gerações da IA sobre
+   o mesmo tema costumam repetir a pergunta com pontuação diferente, e são
+   a mesma carta para quem estuda. */
+function idCarta(frente) {
+  return String(frente || "").toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim().slice(0, 120);
+}
+
+function lerBaralho() {
+  const b = store.get(REVKEY, {});
+  return (b && typeof b === "object" && !Array.isArray(b)) ? b : {};
+}
+
+/* O SM-2 propriamente dito. Recebe o estado da carta e a nota; devolve o
+   estado novo. Sem efeito colateral, para poder ser testado direto. */
+function agendarSM2(estado, q, agora = hoje()) {
+  const e = estado || { ef: 2.5, repeticoes: 0, intervalo: 0 };
+  let ef = Number(e.ef) || 2.5;
+  let repeticoes = Number(e.repeticoes) || 0;
+  let intervalo;
+
+  // Ordem importa: no SM-2 o intervalo sai da facilidade ANTERIOR, e só
+  // depois a facilidade é atualizada. Fazer o contrário adianta a nota
+  // desta resposta em um ciclo e alonga os intervalos indevidamente.
+  if (q < 3) {
+    // Errou: a sequência zera e a carta volta ainda hoje.
+    // (O SM-2 original manda para o dia seguinte; rever na mesma sessão é
+    // o que o Anki faz, e é o que o botão promete ao aluno.)
+    repeticoes = 0;
+    intervalo = 0;
+  } else {
+    repeticoes += 1;
+    if (repeticoes === 1) intervalo = 1;
+    else if (repeticoes === 2) intervalo = 6;
+    else intervalo = Math.round((Number(e.intervalo) || 1) * ef);
+  }
+
+  // A fórmula original de Wozniak. Notas baixas derrubam a facilidade mais
+  // do que notas altas a levantam — errar custa mais caro que acertar rende.
+  ef = ef + (0.1 - (5 - q) * (0.08 + (5 - q) * 0.02));
+  if (ef < EF_MINIMA) ef = EF_MINIMA;
+
+  return {
+    ef: Math.round(ef * 100) / 100,
+    repeticoes,
+    intervalo,
+    proxima: agora + intervalo * DIA,
+    vista: Date.now(),
+  };
+}
+
+function anotarResposta(carta, nota, tema) {
+  const id = idCarta(carta.frente);
+  if (!id) return null;
+  const baralho = lerBaralho();
+  const novo = agendarSM2(baralho[id], NOTAS[nota]?.q ?? 3);
+  baralho[id] = {
+    ...novo,
+    frente: String(carta.frente || "").slice(0, 400),
+    verso: String(carta.verso || "").slice(0, 800),
+    tema: String(tema || "").slice(0, 120),
+  };
+
+  // Teto de espaço: o localStorage inteiro cabe em 5 MB e é compartilhado
+  // com histórico e favoritos. Quando estoura, para de gravar em silêncio.
+  // As primeiras a sair são as já dominadas, não as que ainda custam.
+  const ids = Object.keys(baralho);
+  if (ids.length > MAX_CARTAS) {
+    ids.sort((a, b) => (baralho[b].intervalo || 0) - (baralho[a].intervalo || 0));
+    for (const velho of ids.slice(0, ids.length - MAX_CARTAS)) delete baralho[velho];
+  }
+  store.set(REVKEY, baralho);
+  return novo;
+}
+
+/* Cartas que venceram, mais urgente primeiro. */
+function cartasParaHoje() {
+  const baralho = lerBaralho();
+  const limite = hoje() + DIA - 1;   // tudo que vence até o fim do dia
+  return Object.entries(baralho)
+    .filter(([, c]) => c && c.frente && (c.proxima || 0) <= limite)
+    .sort((a, b) => (a[1].proxima || 0) - (b[1].proxima || 0))
+    .map(([id, c]) => ({ id, ...c }));
+}
+
+function contarPendentes() { return cartasParaHoje().length; }
+
+/* O contador no botão "Revisar" é o que faz a pessoa lembrar de voltar. */
+function atualizarContadorRevisao() {
+  const btn = $('.study-tool[data-modo="revisar"]');
+  if (!btn) return;
+  const n = contarPendentes();
+  const alvo = $(".study-tool__n", btn) || (() => {
+    const span = document.createElement("span");
+    span.className = "study-tool__n";
+    btn.appendChild(span);
+    return span;
+  })();
+  alvo.textContent = n ? String(n) : "";
+  alvo.hidden = !n;
+  btn.classList.toggle("study-tool--pendente", n > 0);
+  btn.setAttribute("aria-label", n ? `Revisar — ${n} cartas vencidas` : "Revisar cartas salvas");
+}
+
+function renderFlashcards(cards, out, tema) {
   if (!cards.length) { out.innerHTML = `<div class="case-err">Não vieram flashcards. Tente de novo.</div>`; return; }
-  out.innerHTML = `<div class="flash-grid">
-    ${cards.map((c, i) => `
+  const baralho = lerBaralho();
+  out.innerHTML = `
+    <p class="flash-ajuda">Responda antes de revelar, depois diga como foi: o que você
+    errar volta nesta sessão, o que acertar volta daqui a dias. Fica salvo neste
+    navegador e reaparece em <b>Revisar</b>.</p>
+    <div class="flash-grid">
+    ${cards.map((c, i) => {
+      const salva = baralho[idCarta(c.frente)];
+      return `
       <div class="flash" data-i="${i}">
         <div class="flash__frente"><span class="flash__num">${i + 1}</span><p>${escapeHTML(String(c.frente || ""))}</p>
+          ${salva ? `<span class="flash__ja">já revisada ${salva.repeticoes}×</span>` : ""}
           <button class="flash__reveal" type="button">Revelar resposta</button></div>
-        <div class="flash__verso" hidden><p>${escapeHTML(String(c.verso || ""))}</p></div>
-      </div>`).join("")}
+        <div class="flash__verso" hidden><p>${escapeHTML(String(c.verso || ""))}</p>
+          ${botoesDeNota()}
+        </div>
+      </div>`;
+    }).join("")}
   </div>`;
+  ligarCartas(out, i => cards[i], tema);
+}
+
+function botoesDeNota() {
+  return `<div class="flash-notas">
+    ${Object.entries(NOTAS).map(([chave, n]) => `
+      <button class="flash-nota flash-nota--${chave}" type="button" data-nota="${chave}"
+              title="${escapeHTML(n.dica)}">${escapeHTML(n.rotulo)}</button>`).join("")}
+  </div>`;
+}
+
+/* Liga revelar e notas. `pegarCarta` traduz o índice do DOM para o objeto,
+   porque na revisão as cartas vêm do baralho e não da resposta da IA. */
+function ligarCartas(out, pegarCarta, tema, aoResponder) {
   $$(".flash__reveal", out).forEach(btn => {
     btn.addEventListener("click", () => {
       const card = btn.closest(".flash");
       $(".flash__verso", card).hidden = false;
       btn.style.display = "none";
+      $(".flash-nota", card)?.focus();
     });
   });
+
+  $$(".flash-nota", out).forEach(btn => {
+    btn.addEventListener("click", () => {
+      const card = btn.closest(".flash");
+      const carta = pegarCarta(Number(card.dataset.i));
+      if (!carta) return;
+      const novo = anotarResposta(carta, btn.dataset.nota, tema);
+      $$(".flash-nota", card).forEach(b => { b.disabled = true; b.classList.remove("is-escolhida"); });
+      btn.classList.add("is-escolhida");
+      card.classList.add("flash--respondida");
+      const quando = $(".flash__quando", card) || document.createElement("p");
+      quando.className = "flash__quando";
+      quando.textContent = novo && novo.intervalo > 0
+        ? `Volta em ${novo.intervalo} ${novo.intervalo === 1 ? "dia" : "dias"}.`
+        : "Volta ainda nesta sessão.";
+      $(".flash__verso", card).appendChild(quando);
+      atualizarContadorRevisao();
+      aoResponder?.(card, btn.dataset.nota);
+    });
+  });
+}
+
+/* A tela de revisão: sem IA, sem rede, só o que já está salvo. */
+function renderRevisao(out) {
+  const pendentes = cartasParaHoje();
+  atualizarContadorRevisao();
+
+  if (!pendentes.length) {
+    const total = Object.keys(lerBaralho()).length;
+    out.innerHTML = total
+      ? `<div class="revisao-vazia">
+           <p><b>Nada vencido por hoje.</b></p>
+           <p>Você tem ${total} ${total === 1 ? "carta guardada" : "cartas guardadas"}.
+           Elas voltam sozinhas quando chegar a hora — gere flashcards de um tema
+           novo enquanto isso.</p>
+         </div>`
+      : `<div class="revisao-vazia">
+           <p><b>Nenhuma carta salva ainda.</b></p>
+           <p>Gere flashcards de um tema e diga como foi em cada um. As que você
+           errar voltam aqui primeiro.</p>
+         </div>`;
+    return;
+  }
+
+  out.innerHTML = `
+    <p class="flash-ajuda"><b>${pendentes.length}</b>
+    ${pendentes.length === 1 ? "carta venceu" : "cartas venceram"}. Isto roda sem
+    internet: o agendamento é conta, não IA.</p>
+    <div class="flash-grid">
+    ${pendentes.map((c, i) => `
+      <div class="flash" data-i="${i}">
+        <div class="flash__frente"><span class="flash__num">${i + 1}</span><p>${escapeHTML(c.frente)}</p>
+          ${c.tema ? `<span class="flash__ja">${escapeHTML(c.tema)}</span>` : ""}
+          <button class="flash__reveal" type="button">Revelar resposta</button></div>
+        <div class="flash__verso" hidden><p>${escapeHTML(c.verso || "")}</p>${botoesDeNota()}</div>
+      </div>`).join("")}
+  </div>`;
+  ligarCartas(out, i => pendentes[i], null);
 }
 
 function renderResumo(data, out) {
