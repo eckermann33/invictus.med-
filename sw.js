@@ -15,7 +15,7 @@
 
 // Trocar a versão invalida o cache inteiro. Precisa acompanhar o ?v= do
 // index.html, senão o app fica servindo a versão anterior para sempre.
-const VERSAO = "v23";
+const VERSAO = "v24";
 const CACHE = `invictus-${VERSAO}`;
 
 // O esqueleto do site. Sem isto no cache, offline não abre nada.
