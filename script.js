@@ -1,42 +1,51 @@
 /* =================================================================
    Invictus.Med — script.js
-   Lógica da aplicação: IA configurável, busca, renderização de ficha
-   clínica, histórico, favoritos, voz, sugestões, exportação.
-   JavaScript puro — sem frameworks.
+   Lógica da aplicação: busca via Worker, ficha clínica, anamnese,
+   calculadoras, ferramentas de estudo, histórico e favoritos.
+   JavaScript puro — sem frameworks, sem etapa de build.
+   -----------------------------------------------------------------
+   Seções (na ordem do arquivo):
+      1) CONFIGURAÇÃO
+      2) MEUS PROJETOS
+      3) ATALHOS DE DOM
+      4) UTILITÁRIOS
+      5) SUGESTÕES AUTOMÁTICAS
+      6) CHAMADA À IA
+      7) FLUXO DE BUSCA
+      8) RENDERIZAÇÃO DA FICHA
+      9) PDF DE ESTUDO
+     10) ABA DE ESTUDO
+     11) REFERÊNCIAS EM ABNT
+     12) ESTUDO DE CASO
+     13) COPIAR / COMPARTILHAR
+     14) HISTÓRICO & FAVORITOS
+     15) BUSCA POR VOZ
+     16) TEMA
+     17) DEMONSTRAÇÃO OFFLINE
+     18) LIGAÇÃO DE EVENTOS GLOBAIS
+     19) ANAMNESE ESTRUTURADA
+     20) REPORTAR CONTEÚDO ERRADO
+     21) CALCULADORAS E ESCORES CLÍNICOS
+     22) MODO SCRIPT
+     23) ESTUDAR O QUE JÁ FOI PESQUISADO
+     24) INICIALIZAÇÃO
    ================================================================= */
 
 "use strict";
 
 /* =================================================================
-   1) CONFIGURAÇÃO DA IA
+   1) CONFIGURAÇÃO
    -----------------------------------------------------------------
-   Há dois caminhos gratuitos com o Google Gemini:
-
-   • PROVIDER: "proxy"  (RECOMENDADO) — a chave fica escondida num
-     servidor gratuito (Cloudflare Worker). Veja proxy-worker.js.
-     Configure apenas CONFIG.PROXY_URL com a URL do seu Worker.
-     Neste modo, a const API_KEY abaixo é ignorada.
-
-   • PROVIDER: "gemini" — chama o Google direto do navegador. Mais
-     simples, mas a chave fica VISÍVEL no código. Use só para testes.
-     Neste modo, cole a chave em const API_KEY.
-
-   Provedores pagos opcionais: "openai" e "anthropic".
+   Toda chamada à IA passa pelo Worker (Cloudflare). A chave da API
+   fica lá, nunca no navegador — e é o Worker que monta o prompt,
+   escolhe o modelo e faz a cascata entre provedores quando um falha.
+   Aqui só precisa estar a URL dele.
 
    ⚠️ Privacidade: este site só envia o NOME da doença para a IA.
    Nunca digite dados de pacientes na busca.
    ================================================================= */
-const API_KEY = "INSERIR_CHAVE_AQUI";   // ← só é usada se PROVIDER for "gemini" direto
-
 const CONFIG = {
-  API_KEY: API_KEY,
-  // "proxy"  = chave escondida no servidor (Cloudflare Worker) — RECOMENDADO
-  // "gemini" = chave direto no navegador (grátis, mas a chave fica visível)
-  // "openai" / "anthropic" = provedores pagos
-  PROVIDER: "proxy",
   PROXY_URL: "https://invictus-proxy.n9rn6tsb26.workers.dev/",   // ← URL do seu Worker
-  MODEL: "gemini-2.5-flash",
-  MAX_TOKENS: 8192,
   // Endpoint para relatos de erro de conteúdo. Vazio = o site monta o texto
   // e oferece cópia, em vez de enviar sozinho.
   REPORT_URL: "",
@@ -44,15 +53,10 @@ const CONFIG = {
   TIMEOUT_MS: 45000,
   // Tamanho máximo do termo enviado à IA (evita payloads abusivos).
   MAX_TERM_LEN: 400,
-  // Endpoints
-  GEMINI_URL: "https://generativelanguage.googleapis.com/v1beta/models",
-  ANTHROPIC_URL: "https://api.anthropic.com/v1/messages",
-  ANTHROPIC_VERSION: "2023-06-01",
-  OPENAI_URL: "https://api.openai.com/v1/chat/completions",
 };
 
 /* =================================================================
-   MEUS PROJETOS — edite aqui livremente.
+   2) MEUS PROJETOS — edite aqui livremente.
    "nome" = o texto que aparece (a máscara). "url" = o link real.
    Adicione/remova quantos quiser, no formato { nome: "...", url: "..." },
    ================================================================= */
@@ -63,83 +67,6 @@ const PROJECTS = [
   { nome: "DPOC-CLINICO", url: "https://eckermann33.github.io/DPOC-Clinico/" },
   // { nome: "Outro projeto", url: "https://..." },
 ];
-
-/* =================================================================
-   2) PROMPT ESTRUTURADO (retorno em JSON em português)
-   ================================================================= */
-function buildPrompt(termo) {
-  return `Você é um assistente médico de referência clínica para estudantes e profissionais da saúde.
-Analise o termo: "${termo}".
-
-Responda EXCLUSIVAMENTE com um objeto JSON válido (sem texto antes ou depois, sem markdown, sem crases) seguindo EXATAMENTE este esquema e em português do Brasil:
-
-{
-  "nome": "nome correto e completo da condição",
-  "cid10": "código CID-10 ou ''",
-  "cid11": "código CID-11 ou ''",
-  "sinonimos": ["sinônimos populares e técnicos"],
-  "area_medica": "especialidade(s) relacionada(s)",
-  "definicao": "explicação médica objetiva e clara (2 a 4 frases)",
-  "sintomas_comuns": ["sintomas mais frequentes"],
-  "sintomas_raros": ["sintomas raros ou menos frequentes"],
-  "sinais_alerta": ["sinais que exigem avaliação médica URGENTE"],
-  "tratamento": {
-    "padrao": ["condutas e tratamento padrão"],
-    "medicamentos": ["medicamentos/classes frequentemente usados"],
-    "complementares": ["tratamentos complementares ou de suporte"],
-    "prognostico": "prognóstico geral em 1 a 2 frases"
-  },
-  "diagnostico": {
-    "laboratoriais": ["exames laboratoriais"],
-    "imagem": ["exames de imagem"],
-    "criterios": ["critérios diagnósticos relevantes"]
-  },
-  "complicacoes": ["possíveis complicações"],
-  "variacoes": [
-    { "nome": "", "definicao": "", "transmissao": "(apenas se infecciosa, senão '')", "gravidade": "leve|moderada|grave", "tratamento": "" }
-  ],
-  "diferenciais": ["doenças semelhantes que podem ser confundidas"],
-  "epidemiologia": {
-    "prevalencia": "",
-    "faixa_etaria": "faixa etária mais acometida",
-    "sexo": "sexo mais acometido",
-    "distribuicao_geografica": ""
-  },
-  "fisiopatologia": {
-    "simples": "explicação simplificada para leigos",
-    "avancada": "explicação detalhada para estudantes de medicina"
-  },
-  "referencias": ["fontes médicas reconhecidas utilizadas"]
-}
-
-SE O TERMO FOR UM FÁRMACO / MEDICAMENTO (ex.: "Sertralina", "Metformina", "Omeprazol"), ignore o esquema acima e responda com ESTE outro esquema:
-
-{
-  "nome": "nome do fármaco",
-  "tipo": "farmaco",
-  "area_medica": "especialidade(s) em que é mais usado",
-  "sinonimos": ["nomes comerciais e sinônimos"],
-  "farmaco": {
-    "principio_ativo": "",
-    "classe": "classe farmacológica",
-    "para_que_serve": "explicação objetiva (2 a 4 frases)",
-    "doencas_tratadas": ["condições tratadas"],
-    "mecanismo_simples": "mecanismo de ação em linguagem acessível",
-    "mecanismo_avancado": "mecanismo detalhado (receptores, vias, farmacocinética)",
-    "efeitos_adversos_comuns": [],
-    "efeitos_adversos_graves": [],
-    "contraindicacoes": [],
-    "interacoes": ["interações medicamentosas relevantes"]
-  },
-  "referencias": ["fontes médicas reconhecidas utilizadas"]
-}
-
-REGRAS IMPORTANTES:
-- O termo pode descrever um CENÁRIO CLÍNICO com VÁRIAS condições/comorbidades (ex.: "paciente com hipertensão arterial sistêmica, diabetes tipo 2 e obesidade"). Nesse caso: use "nome" como rótulo curto do quadro (ex.: "Quadro clínico: HAS + DM2 + Obesidade"); em "definicao" faça um panorama integrado das comorbidades e como se relacionam; preencha "variacoes" com UMA entrada por condição individual (nome, definicao, gravidade, tratamento); em "tratamento" priorize o manejo integrado; em "complicacoes" destaque os riscos combinados; em "diferenciais" relacione condições associadas.
-- Se o termo for AMPLO (ex.: "Hepatite", "Diabetes", "Anemia"), preencha "variacoes" com os principais tipos/subtipos. Caso contrário, deixe "variacoes" como [].
-- Listas sem dados pertinentes devem ficar vazias ([]). Não invente códigos CID.
-- Seja CONCISO: no máximo ~6 itens por lista. Responda SOMENTE com o JSON COMPLETO e válido — nunca corte a resposta no meio.`;
-}
 
 /* =================================================================
    3) ATALHOS DE DOM
@@ -387,101 +314,65 @@ function isFichaValida(d) {
   );
 }
 
-async function fetchAnalysis(termo, signal) {
-  /* ---- Modo proxy: a chave fica no servidor (Cloudflare Worker) ---- */
-  if (CONFIG.PROVIDER === "proxy") {
-    if (!isProxyConfigured()) {
-      const demo = getDemo(termo);
-      if (demo) return demo;
-      throw errWithCode("NO_PROXY", "NO_PROXY");
-    }
-    const data = await postProxy({ termo }, signal); // o Worker devolve a ficha pronta
-    if (!isFichaValida(data)) throw errWithCode("BAD_SHAPE", "FICHA");
-    return data;
-  }
+/* ---------- Fichas guardadas para ler sem internet ----------
+   O service worker guarda os arquivos do site; as fichas não passam por
+   ele de propósito (são POST, e cache de conteúdo médico sem aviso é
+   pedir problema). Ficam aqui, com a data de quando foram geradas, e a
+   tela avisa que é cópia salva sempre que uma delas for usada. */
+const CACHE_FICHAS = "invictus.fichas";
+const MAX_FICHAS_GUARDADAS = 30;
 
-  /* ---- Modos diretos (chave no navegador) ---- */
-  // Sem chave configurada → tenta demonstração offline
-  if (!CONFIG.API_KEY || CONFIG.API_KEY === "INSERIR_CHAVE_AQUI") {
-    const demo = getDemo(termo);
-    if (demo) return demo;
-    throw errWithCode("NO_KEY", "NO_KEY");
-  }
+const chaveFicha = t => String(t || "").trim().toLowerCase();
 
-  const prompt = buildPrompt(termo);
-  let raw;
+function guardarFicha(termo, ficha) {
+  const chave = chaveFicha(ficha?.nome || termo);
+  if (!chave) return;
+  const guardadas = store.get(CACHE_FICHAS, {});
+  if (!guardadas || typeof guardadas !== "object") return;
+  guardadas[chave] = { ficha, ts: Date.now() };
 
-  if (CONFIG.PROVIDER === "gemini") {
-    // Endpoint nativo do Gemini — funciona direto do navegador (CORS ok).
-    // responseMimeType: "application/json" força a resposta a vir só em JSON.
-    const url = `${CONFIG.GEMINI_URL}/${CONFIG.MODEL}:generateContent?key=${encodeURIComponent(CONFIG.API_KEY)}`;
-    const res = await fetchWithTimeout(url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: {
-          maxOutputTokens: CONFIG.MAX_TOKENS,
-          temperature: 0.3,
-          responseMimeType: "application/json",
-        },
-      }),
-    }, signal);
-    if (!res.ok) throw errWithCode(`HTTP ${res.status}`, `HTTP-${res.status}`);
-    const data = await res.json();
-    raw = (data?.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("");
-  } else if (CONFIG.PROVIDER === "anthropic") {
-    const res = await fetchWithTimeout(CONFIG.ANTHROPIC_URL, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": CONFIG.API_KEY,
-        "anthropic-version": CONFIG.ANTHROPIC_VERSION,
-        "anthropic-dangerous-direct-browser-access": "true",
-      },
-      body: JSON.stringify({
-        model: CONFIG.MODEL,
-        max_tokens: CONFIG.MAX_TOKENS,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    }, signal);
-    if (!res.ok) throw errWithCode(`HTTP ${res.status}`, `HTTP-${res.status}`);
-    const data = await res.json();
-    raw = (data.content || []).map(b => b.text || "").join("");
-  } else {
-    // OpenAI-compatível
-    const res = await fetchWithTimeout(CONFIG.OPENAI_URL, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "authorization": `Bearer ${CONFIG.API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: CONFIG.MODEL,
-        max_tokens: CONFIG.MAX_TOKENS,
-        messages: [
-          { role: "system", content: "Responda apenas com JSON válido, sem markdown." },
-          { role: "user", content: prompt },
-        ],
-      }),
-    }, signal);
-    if (!res.ok) throw errWithCode(`HTTP ${res.status}`, `HTTP-${res.status}`);
-    const data = await res.json();
-    raw = data?.choices?.[0]?.message?.content || "";
-  }
-
-  const ficha = parseJSON(raw);
-  if (!isFichaValida(ficha)) throw errWithCode("BAD_SHAPE", "FICHA");
-  return ficha;
+  // Sem teto, o localStorage estoura (5 MB) e para de gravar em silêncio —
+  // inclusive o histórico e os favoritos, que dividem o mesmo espaço.
+  const chaves = Object.keys(guardadas)
+    .sort((a, b) => (guardadas[b]?.ts || 0) - (guardadas[a]?.ts || 0));
+  const podadas = {};
+  for (const k of chaves.slice(0, MAX_FICHAS_GUARDADAS)) podadas[k] = guardadas[k];
+  store.set(CACHE_FICHAS, podadas);
 }
 
-/* Extrai e valida o JSON da resposta (tolerante a crases/texto extra) */
-function parseJSON(text) {
-  let t = String(text).trim().replace(/```json|```/gi, "").trim();
-  const start = t.indexOf("{");
-  const end = t.lastIndexOf("}");
-  if (start !== -1 && end !== -1) t = t.slice(start, end + 1);
-  return JSON.parse(t);
+function buscarFichaGuardada(termo) {
+  const guardadas = store.get(CACHE_FICHAS, {});
+  if (!guardadas || typeof guardadas !== "object") return null;
+  const chave = chaveFicha(termo);
+  // Bate o nome exato primeiro; depois aceita "hipertensão" achando
+  // "Hipertensão Arterial Sistêmica", que é como o nome volta da IA.
+  const achado = guardadas[chave]
+    || Object.entries(guardadas)
+         .filter(([k]) => k.includes(chave) || chave.includes(k))
+         .sort((a, b) => (b[1]?.ts || 0) - (a[1]?.ts || 0))[0]?.[1];
+  return (achado && isFichaValida(achado.ficha)) ? achado : null;
+}
+
+async function fetchAnalysis(termo, signal) {
+  if (!isProxyConfigured()) {
+    // Fork sem Worker configurado: mostra a ficha de demonstração, se houver
+    // uma para o termo, em vez de só um erro.
+    const demo = await getDemo(termo);
+    if (demo) return demo;
+    throw errWithCode("NO_PROXY", "NO_PROXY");
+  }
+  try {
+    const data = await postProxy({ termo }, signal); // o Worker devolve a ficha pronta
+    if (!isFichaValida(data)) throw errWithCode("BAD_SHAPE", "FICHA");
+    guardarFicha(termo, data);
+    return data;
+  } catch (err) {
+    // Cancelamento é o usuário buscando outra coisa, não falta de rede.
+    if (codeOf(err) === "CANCELLED") throw err;
+    const guardada = buscarFichaGuardada(termo);
+    if (guardada) return { ...guardada.ficha, _guardadaEm: guardada.ts };
+    throw err;
+  }
 }
 
 /* Mensagens que se alternam enquanto a IA "pensa" */
@@ -506,7 +397,8 @@ function startThinking() {
 function stopThinking() { clearInterval(thinkingTimer); thinkingTimer = null; }
 
 /* Volta para a tela de busca para fazer outra pergunta */
-function resetToSearch() {
+function resetToSearch({ substituirEndereco = false } = {}) {
+  marcarNoEndereco("", substituirEndereco);
   if (activeSearch) { activeSearch.abort(); activeSearch = null; }
   searchSeq++;                 // invalida qualquer resposta ainda a caminho
   setBusy(false);
@@ -537,7 +429,7 @@ function setBusy(busy) {
   if (els.loader) els.loader.setAttribute("aria-busy", busy ? "true" : "false");
 }
 
-async function analyze(termRaw) {
+async function analyze(termRaw, { substituirEndereco = false } = {}) {
   const term = (termRaw ?? els.input.value).trim().slice(0, CONFIG.MAX_TERM_LEN);
   if (!term) { els.input.focus(); return; }
 
@@ -567,6 +459,7 @@ async function analyze(termRaw) {
     currentData = data;
     renderResult(data);
     addToHistory(data.nome || term);
+    marcarNoEndereco(data.nome || term, substituirEndereco);
     stopThinking();
     hide(els.loader);
     show(els.results);
@@ -579,6 +472,43 @@ async function analyze(termRaw) {
   } finally {
     if (seq === searchSeq) { setBusy(false); activeSearch = null; }
   }
+}
+
+/* ---------- O endereço acompanha a ficha aberta ----------
+   Sem isto, o site tem um endereço só: recarregar perde a ficha, o botão
+   voltar sai do site e não dá para mandar uma condição específica para
+   alguém. Com ?q=, o endereço na barra já é o link compartilhável. */
+
+function marcarNoEndereco(termo, substituir = false) {
+  if (!window.history?.pushState) return;
+  const u = new URL(location.href);
+  u.search = termo ? "?q=" + encodeURIComponent(termo) : "";
+  if (u.toString() === location.href) return;
+  const estado = { q: termo || "" };
+  // Trocar de ficha é navegar: merece uma entrada, para o voltar funcionar.
+  // Chegar pelo botão voltar ou por um link colado, não — nesses casos a
+  // entrada já existe e empilhar outra faria o voltar andar em círculos.
+  if (substituir) history.replaceState(estado, "", u.toString());
+  else history.pushState(estado, "", u.toString());
+}
+
+/* Abre a ficha pedida no endereço, se houver.
+   Também atende os atalhos do app instalado (?abrir=anamnese|escores),
+   que são o caminho mais curto para as duas telas que funcionam sem
+   internet nenhuma. */
+function abrirPeloEndereco() {
+  const params = new URLSearchParams(location.search);
+
+  const atalho = params.get("abrir");
+  if (atalho === "anamnese") { abrirAnamnese(); return true; }
+  if (atalho === "escores" || atalho === "calc") { abrirCalculadoras(); return true; }
+
+  const termo = params.get("q");
+  const limpo = (termo || "").trim().slice(0, CONFIG.MAX_TERM_LEN);
+  if (!limpo) return false;
+  if (els.input) els.input.value = limpo;
+  analyze(limpo, { substituirEndereco: true });
+  return true;
 }
 
 function showError(err) {
@@ -829,6 +759,21 @@ function listaReferencias(refs) {
     </p>`;
 }
 
+/* Uma ficha vinda do cache precisa se anunciar. Conteúdo médico velho
+   parecendo recém-gerado é pior do que não ter conteúdo nenhum — e quem
+   está sem sinal no corredor do hospital não tem como desconfiar sozinho. */
+function avisoCopiaSalva(d) {
+  if (!d || !d._guardadaEm) return "";
+  const quando = new Date(d._guardadaEm);
+  const data = quando.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
+  const hora = quando.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  return `<div class="copia-salva" role="status">
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 8v5l3 2M3.05 11a9 9 0 1 1 .5 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 4v4h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span><b>Cópia salva</b> de ${escapeHTML(data)}, ${escapeHTML(hora)}.
+    Sem conexão agora — quando voltar, busque de novo para ver a versão atual.</span>
+  </div>`;
+}
+
 function renderResult(d) {
   const isFav = isFavorite(d.nome);
   const isFarmaco = d.tipo === "farmaco" && d.farmaco;
@@ -862,6 +807,7 @@ function renderResult(d) {
         Estudar isto
       </button>
     </div>
+    ${avisoCopiaSalva(d)}
     <section class="fiche-head" id="identificacao">
       ${areaLabel ? `<span class="fiche-head__area">${escapeHTML(areaLabel)}</span>` : ""}
       <h1 class="fiche-head__name">${escapeHTML(d.nome || "Resultado")}</h1>
@@ -872,6 +818,7 @@ function renderResult(d) {
           <svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 17.3 6.2 20.5l1.1-6.5L2.6 9.4l6.5-.9L12 2.6l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
           <span>${isFav ? "Favoritado" : "Favoritar"}</span></button>
         <button class="tool" id="tCopy" type="button"><svg viewBox="0 0 24 24" width="16" height="16"><rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10" fill="none" stroke="currentColor" stroke-width="2"/></svg><span>Copiar</span></button>
+        <button class="tool" id="tMarkdown" type="button" title="Copia em Markdown, pronto para colar no Obsidian ou no Notion"><svg viewBox="0 0 24 24" width="16" height="16"><rect x="2" y="5" width="20" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M6 15V9l3 3 3-3v6M17 9v4m0 0 2-2m-2 2-2-2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Markdown</span></button>
         <button class="tool" id="tShare" type="button"><svg viewBox="0 0 24 24" width="16" height="16"><circle cx="18" cy="5" r="3" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="6" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="19" r="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4" stroke="currentColor" stroke-width="2"/></svg><span>Compartilhar</span></button>
         <button class="tool" id="tPdf" type="button"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 9V3h9l3 3v3M6 18v3h12v-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><rect x="4" y="9" width="16" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="2"/></svg><span>PDF</span></button>
         <button class="tool tool--reportar" id="tReportar" type="button"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 8v5M12 16h.01M10.3 3.9 2.5 18a1.8 1.8 0 0 0 1.6 2.7h15.8a1.8 1.8 0 0 0 1.6-2.7L13.7 3.9a1.8 1.8 0 0 0-3.4 0z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Reportar erro</span></button>
@@ -942,10 +889,11 @@ function bindResultEvents(d) {
   });
 
   // Ações
-  $("#btnNewSearch")?.addEventListener("click", resetToSearch);
+  $("#btnNewSearch")?.addEventListener("click", () => resetToSearch());
   $("#btnVista")?.addEventListener("click", alternarVista);
   $("#tFav")?.addEventListener("click", () => toggleFavorite(d));
   $("#tCopy")?.addEventListener("click", () => copyContent(d));
+  $("#tMarkdown")?.addEventListener("click", () => copyMarkdown(d));
   $("#tShare")?.addEventListener("click", () => shareContent(d));
   $("#tPdf")?.addEventListener("click", () => generatePDF(d));
   $("#tPrint")?.addEventListener("click", () => openPrintWindow(d));
@@ -976,10 +924,7 @@ function initScrollSpy() {
 }
 
 /* =================================================================
-   9) COPIAR / COMPARTILHAR (texto formatado)
-   ================================================================= */
-/* =================================================================
-   PDF DE ESTUDO — documento limpo e contínuo (não formato de impressora)
+   9) PDF DE ESTUDO — documento limpo e contínuo (não formato de impressora)
    ================================================================= */
 function buildStudyHTML(d) {
   const esc = escapeHTML;
@@ -1153,7 +1098,7 @@ function openPrintWindow(d) {
 }
 
 /* =================================================================
-   ABA DE ESTUDO — quiz, flashcards, resumo e mapa mental (via Cerebras).
+   10) ABA DE ESTUDO — quiz, flashcards, resumo e mapa mental (via Cerebras).
    Gera por tema digitado, sob demanda (só no clique de cada ferramenta).
    ================================================================= */
 function openStudy(tema) {
@@ -1163,6 +1108,7 @@ function openStudy(tema) {
   // Esconde TODAS as outras telas e mostra só a de estudo
   hide(els.results); hide(els.empty); hide(els.notice); hide(els.loader); hide(els.hero);
   show(els.studyView);
+  atualizarContadorRevisao();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -1176,6 +1122,15 @@ function closeStudy() {
 async function generateStudy(modo) {
   const tema = (els.studyTema.value || "").trim();
   const out = els.studyOut;
+
+  // Revisar é o único modo que não passa pela IA: as cartas já estão salvas
+  // e o agendamento é aritmética. Por isso também não exige tema.
+  if (modo === "revisar") {
+    $$(".study-tool", els.studyView).forEach(b => b.classList.toggle("is-active", b.dataset.modo === modo));
+    renderRevisao(out);
+    return;
+  }
+
   if (!tema) { toast("Digite um tema para estudar."); els.studyTema.focus(); return; }
 
   // Marca o botão ativo e mostra carregando
@@ -1187,7 +1142,7 @@ async function generateStudy(modo) {
     const data = await postProxy({ modo, termo: tema.slice(0, CONFIG.MAX_TERM_LEN) });
 
     if (modo === "quiz") renderQuiz(data.perguntas || [], out);
-    else if (modo === "flashcards") renderFlashcards(data.cards || [], out);
+    else if (modo === "flashcards") renderFlashcards(data.cards || [], out, tema);
     else if (modo === "resumo") renderResumo(data, out);
     else if (modo === "mapa") renderMapa(data, out);
   } catch (e) {
@@ -1251,23 +1206,239 @@ function renderQuiz(perguntas, out) {
   });
 }
 
-function renderFlashcards(cards, out) {
+/* =================================================================
+   REPETIÇÃO ESPAÇADA (SM-2)
+   -----------------------------------------------------------------
+   Os flashcards eram descartáveis: a IA gerava, o aluno lia, e nada
+   ficava. O que faz flashcard funcionar não é lê-lo uma vez — é revê-lo
+   no intervalo certo, e o que você errou voltar antes do que acertou.
+
+   O algoritmo é o SM-2, o mesmo do Anki na base. Roda inteiro aqui, sem
+   chamada de rede: é aritmética, então funciona sem internet e não custa
+   nada. A IA continua responsável só por gerar as cartas.
+
+   Três notas em vez das quatro do Anki. "Quase acertei" e "acertei com
+   esforço" são difíceis de separar na hora, e a diferença some no ruído.
+   ================================================================= */
+const REVKEY = "invictus.revisao";
+const EF_MINIMA = 1.3;      // abaixo disto o intervalo praticamente não cresce
+const MAX_CARTAS = 400;     // teto de espaço no localStorage
+
+const NOTAS = {
+  errei:   { q: 0, rotulo: "Errei",   dica: "Volta já nesta sessão" },
+  dificil: { q: 3, rotulo: "Difícil", dica: "Volta logo" },
+  facil:   { q: 5, rotulo: "Fácil",   dica: "Volta mais tarde" },
+};
+
+const hoje = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); };
+const DIA = 86400000;
+
+/* Identidade da carta: a pergunta, normalizada. Duas gerações da IA sobre
+   o mesmo tema costumam repetir a pergunta com pontuação diferente, e são
+   a mesma carta para quem estuda. */
+function idCarta(frente) {
+  return String(frente || "").toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim().slice(0, 120);
+}
+
+function lerBaralho() {
+  const b = store.get(REVKEY, {});
+  return (b && typeof b === "object" && !Array.isArray(b)) ? b : {};
+}
+
+/* O SM-2 propriamente dito. Recebe o estado da carta e a nota; devolve o
+   estado novo. Sem efeito colateral, para poder ser testado direto. */
+function agendarSM2(estado, q, agora = hoje()) {
+  const e = estado || { ef: 2.5, repeticoes: 0, intervalo: 0 };
+  let ef = Number(e.ef) || 2.5;
+  let repeticoes = Number(e.repeticoes) || 0;
+  let intervalo;
+
+  // Ordem importa: no SM-2 o intervalo sai da facilidade ANTERIOR, e só
+  // depois a facilidade é atualizada. Fazer o contrário adianta a nota
+  // desta resposta em um ciclo e alonga os intervalos indevidamente.
+  if (q < 3) {
+    // Errou: a sequência zera e a carta volta ainda hoje.
+    // (O SM-2 original manda para o dia seguinte; rever na mesma sessão é
+    // o que o Anki faz, e é o que o botão promete ao aluno.)
+    repeticoes = 0;
+    intervalo = 0;
+  } else {
+    repeticoes += 1;
+    if (repeticoes === 1) intervalo = 1;
+    else if (repeticoes === 2) intervalo = 6;
+    else intervalo = Math.round((Number(e.intervalo) || 1) * ef);
+  }
+
+  // A fórmula original de Wozniak. Notas baixas derrubam a facilidade mais
+  // do que notas altas a levantam — errar custa mais caro que acertar rende.
+  ef = ef + (0.1 - (5 - q) * (0.08 + (5 - q) * 0.02));
+  if (ef < EF_MINIMA) ef = EF_MINIMA;
+
+  return {
+    ef: Math.round(ef * 100) / 100,
+    repeticoes,
+    intervalo,
+    proxima: agora + intervalo * DIA,
+    vista: Date.now(),
+  };
+}
+
+function anotarResposta(carta, nota, tema) {
+  const id = idCarta(carta.frente);
+  if (!id) return null;
+  const baralho = lerBaralho();
+  const novo = agendarSM2(baralho[id], NOTAS[nota]?.q ?? 3);
+  baralho[id] = {
+    ...novo,
+    frente: String(carta.frente || "").slice(0, 400),
+    verso: String(carta.verso || "").slice(0, 800),
+    tema: String(tema || "").slice(0, 120),
+  };
+
+  // Teto de espaço: o localStorage inteiro cabe em 5 MB e é compartilhado
+  // com histórico e favoritos. Quando estoura, para de gravar em silêncio.
+  // As primeiras a sair são as já dominadas, não as que ainda custam.
+  const ids = Object.keys(baralho);
+  if (ids.length > MAX_CARTAS) {
+    ids.sort((a, b) => (baralho[b].intervalo || 0) - (baralho[a].intervalo || 0));
+    for (const velho of ids.slice(0, ids.length - MAX_CARTAS)) delete baralho[velho];
+  }
+  store.set(REVKEY, baralho);
+  return novo;
+}
+
+/* Cartas que venceram, mais urgente primeiro. */
+function cartasParaHoje() {
+  const baralho = lerBaralho();
+  const limite = hoje() + DIA - 1;   // tudo que vence até o fim do dia
+  return Object.entries(baralho)
+    .filter(([, c]) => c && c.frente && (c.proxima || 0) <= limite)
+    .sort((a, b) => (a[1].proxima || 0) - (b[1].proxima || 0))
+    .map(([id, c]) => ({ id, ...c }));
+}
+
+function contarPendentes() { return cartasParaHoje().length; }
+
+/* O contador no botão "Revisar" é o que faz a pessoa lembrar de voltar. */
+function atualizarContadorRevisao() {
+  const btn = $('.study-tool[data-modo="revisar"]');
+  if (!btn) return;
+  const n = contarPendentes();
+  const alvo = $(".study-tool__n", btn) || (() => {
+    const span = document.createElement("span");
+    span.className = "study-tool__n";
+    btn.appendChild(span);
+    return span;
+  })();
+  alvo.textContent = n ? String(n) : "";
+  alvo.hidden = !n;
+  btn.classList.toggle("study-tool--pendente", n > 0);
+  btn.setAttribute("aria-label", n ? `Revisar — ${n} cartas vencidas` : "Revisar cartas salvas");
+}
+
+function renderFlashcards(cards, out, tema) {
   if (!cards.length) { out.innerHTML = `<div class="case-err">Não vieram flashcards. Tente de novo.</div>`; return; }
-  out.innerHTML = `<div class="flash-grid">
-    ${cards.map((c, i) => `
+  const baralho = lerBaralho();
+  out.innerHTML = `
+    <p class="flash-ajuda">Responda antes de revelar, depois diga como foi: o que você
+    errar volta nesta sessão, o que acertar volta daqui a dias. Fica salvo neste
+    navegador e reaparece em <b>Revisar</b>.</p>
+    <div class="flash-grid">
+    ${cards.map((c, i) => {
+      const salva = baralho[idCarta(c.frente)];
+      return `
       <div class="flash" data-i="${i}">
         <div class="flash__frente"><span class="flash__num">${i + 1}</span><p>${escapeHTML(String(c.frente || ""))}</p>
+          ${salva ? `<span class="flash__ja">já revisada ${salva.repeticoes}×</span>` : ""}
           <button class="flash__reveal" type="button">Revelar resposta</button></div>
-        <div class="flash__verso" hidden><p>${escapeHTML(String(c.verso || ""))}</p></div>
-      </div>`).join("")}
+        <div class="flash__verso" hidden><p>${escapeHTML(String(c.verso || ""))}</p>
+          ${botoesDeNota()}
+        </div>
+      </div>`;
+    }).join("")}
   </div>`;
+  ligarCartas(out, i => cards[i], tema);
+}
+
+function botoesDeNota() {
+  return `<div class="flash-notas">
+    ${Object.entries(NOTAS).map(([chave, n]) => `
+      <button class="flash-nota flash-nota--${chave}" type="button" data-nota="${chave}"
+              title="${escapeHTML(n.dica)}">${escapeHTML(n.rotulo)}</button>`).join("")}
+  </div>`;
+}
+
+/* Liga revelar e notas. `pegarCarta` traduz o índice do DOM para o objeto,
+   porque na revisão as cartas vêm do baralho e não da resposta da IA. */
+function ligarCartas(out, pegarCarta, tema, aoResponder) {
   $$(".flash__reveal", out).forEach(btn => {
     btn.addEventListener("click", () => {
       const card = btn.closest(".flash");
       $(".flash__verso", card).hidden = false;
       btn.style.display = "none";
+      $(".flash-nota", card)?.focus();
     });
   });
+
+  $$(".flash-nota", out).forEach(btn => {
+    btn.addEventListener("click", () => {
+      const card = btn.closest(".flash");
+      const carta = pegarCarta(Number(card.dataset.i));
+      if (!carta) return;
+      const novo = anotarResposta(carta, btn.dataset.nota, tema);
+      $$(".flash-nota", card).forEach(b => { b.disabled = true; b.classList.remove("is-escolhida"); });
+      btn.classList.add("is-escolhida");
+      card.classList.add("flash--respondida");
+      const quando = $(".flash__quando", card) || document.createElement("p");
+      quando.className = "flash__quando";
+      quando.textContent = novo && novo.intervalo > 0
+        ? `Volta em ${novo.intervalo} ${novo.intervalo === 1 ? "dia" : "dias"}.`
+        : "Volta ainda nesta sessão.";
+      $(".flash__verso", card).appendChild(quando);
+      atualizarContadorRevisao();
+      aoResponder?.(card, btn.dataset.nota);
+    });
+  });
+}
+
+/* A tela de revisão: sem IA, sem rede, só o que já está salvo. */
+function renderRevisao(out) {
+  const pendentes = cartasParaHoje();
+  atualizarContadorRevisao();
+
+  if (!pendentes.length) {
+    const total = Object.keys(lerBaralho()).length;
+    out.innerHTML = total
+      ? `<div class="revisao-vazia">
+           <p><b>Nada vencido por hoje.</b></p>
+           <p>Você tem ${total} ${total === 1 ? "carta guardada" : "cartas guardadas"}.
+           Elas voltam sozinhas quando chegar a hora — gere flashcards de um tema
+           novo enquanto isso.</p>
+         </div>`
+      : `<div class="revisao-vazia">
+           <p><b>Nenhuma carta salva ainda.</b></p>
+           <p>Gere flashcards de um tema e diga como foi em cada um. As que você
+           errar voltam aqui primeiro.</p>
+         </div>`;
+    return;
+  }
+
+  out.innerHTML = `
+    <p class="flash-ajuda"><b>${pendentes.length}</b>
+    ${pendentes.length === 1 ? "carta venceu" : "cartas venceram"}. Isto roda sem
+    internet: o agendamento é conta, não IA.</p>
+    <div class="flash-grid">
+    ${pendentes.map((c, i) => `
+      <div class="flash" data-i="${i}">
+        <div class="flash__frente"><span class="flash__num">${i + 1}</span><p>${escapeHTML(c.frente)}</p>
+          ${c.tema ? `<span class="flash__ja">${escapeHTML(c.tema)}</span>` : ""}
+          <button class="flash__reveal" type="button">Revelar resposta</button></div>
+        <div class="flash__verso" hidden><p>${escapeHTML(c.verso || "")}</p>${botoesDeNota()}</div>
+      </div>`).join("")}
+  </div>`;
+  ligarCartas(out, i => pendentes[i], null);
 }
 
 function renderResumo(data, out) {
@@ -1301,7 +1472,7 @@ function renderMapa(data, out) {
 }
 
 /* =================================================================
-   REFERÊNCIAS EM ABNT — gera sob demanda (no clique) e copia.
+   11) REFERÊNCIAS EM ABNT — gera sob demanda (no clique) e copia.
    Não mostra as referências na tela; só copia formatado.
    ================================================================= */
 async function generateABNT(d, btn) {
@@ -1351,7 +1522,7 @@ async function generateABNT(d, btn) {
 }
 
 /* =================================================================
-   ESTUDO DE CASO — IA leve (sob demanda), não pesa na ficha principal
+   12) ESTUDO DE CASO — IA leve (sob demanda), não pesa na ficha principal
    ================================================================= */
 async function generateCase(d) {
   const out = $("#caseOut", els.content);
@@ -1522,6 +1693,9 @@ async function compararRaciocinio() {
   }
 }
 
+/* =================================================================
+   13) COPIAR / COMPARTILHAR (texto formatado)
+   ================================================================= */
 function dataToText(d) {
   const L = [];
   const list = a => (a && a.length) ? a.join(", ") : "—";
@@ -1574,20 +1748,121 @@ async function copyContent(d) {
   toast(await copyToClipboard(dataToText(d)) ? "Conteúdo copiado." : "Não foi possível copiar.");
 }
 
+/* Link para a ficha. Não guarda o conteúdo, só o termo: quem abrir recebe
+   a versão do momento em vez de uma cópia congelada de meses atrás — e o
+   link cabe numa mensagem, ao contrário da ficha inteira. */
+function linkDaFicha(d) {
+  const u = new URL(location.href);
+  u.hash = "";
+  u.search = "?q=" + encodeURIComponent(d.nome || "");
+  return u.toString();
+}
+
 async function shareContent(d) {
-  const text = dataToText(d);
+  const url = linkDaFicha(d);
+  const titulo = `Invictus.Med — ${d.nome || "ficha"}`;
   if (navigator.share) {
-    try { await navigator.share({ title: `Invictus.Med — ${d.nome}`, text }); return; }
+    try { await navigator.share({ title: titulo, text: d.nome || "", url }); return; }
     catch (e) {
       if (e && e.name === "AbortError") return;   // o usuário só fechou o menu
       /* sem suporte de fato → cai para a cópia */
     }
   }
-  toast(await copyToClipboard(text) ? "Copiado para compartilhar." : "Compartilhamento indisponível.");
+  toast(await copyToClipboard(url) ? "Link copiado." : "Compartilhamento indisponível.");
+}
+
+/* ---------- Markdown (Obsidian, Notion, Logseq) ----------
+   Quem estuda com caderno digital não quer o texto corrido: quer títulos
+   que viram sumário, listas que viram checklist e o cabeçalho YAML que o
+   Obsidian usa para indexar por especialidade e CID. */
+function dataToMarkdown(d) {
+  const L = [];
+  const lim = v => String(v ?? "").replace(/\r?\n+/g, " ").trim();
+  const yamlLista = a => (a || []).filter(Boolean).map(x => `  - ${JSON.stringify(lim(x))}`);
+  const sec = (titulo, corpo) => { if (corpo && corpo.length) { L.push(`## ${titulo}`, "", ...[].concat(corpo), ""); } };
+  const itens = a => (a || []).filter(Boolean).map(x => `- ${lim(x)}`);
+  const par = t => (t && String(t).trim()) ? [String(t).trim()] : [];
+
+  // Cabeçalho YAML — é o que torna a nota pesquisável no cofre.
+  const meta = ["---", `titulo: ${JSON.stringify(lim(d.nome) || "Ficha")}`];
+  if (d.cid10) meta.push(`cid10: ${JSON.stringify(lim(d.cid10))}`);
+  if (d.cid11) meta.push(`cid11: ${JSON.stringify(lim(d.cid11))}`);
+  if (d.area_medica) meta.push(`area: ${JSON.stringify(lim(d.area_medica))}`);
+  if (d.sinonimos?.length) meta.push("aliases:", ...yamlLista(d.sinonimos));
+  meta.push("tags:", `  - ${d.tipo === "farmaco" ? "farmaco" : "doenca"}`, "  - invictus-med");
+  meta.push(`fonte: ${JSON.stringify(linkDaFicha(d))}`, "---", "");
+  L.push(...meta, `# ${lim(d.nome) || "Ficha"}`, "");
+
+  if (d.tipo === "farmaco" && d.farmaco) {
+    const f = d.farmaco;
+    const ficha = [];
+    if (f.principio_ativo) ficha.push(`**Princípio ativo:** ${lim(f.principio_ativo)}`);
+    if (f.classe) ficha.push(`**Classe:** ${lim(f.classe)}`);
+    if (ficha.length) L.push(ficha.join("  \n"), "");
+    sec("Para que serve", par(f.para_que_serve));
+    sec("Doenças tratadas", itens(f.doencas_tratadas));
+    sec("Mecanismo (simples)", par(f.mecanismo_simples));
+    sec("Mecanismo (avançado)", par(f.mecanismo_avancado));
+    sec("Efeitos adversos comuns", itens(f.efeitos_adversos_comuns));
+    sec("⚠️ Efeitos adversos graves", itens(f.efeitos_adversos_graves));
+    sec("Contraindicações", itens(f.contraindicacoes));
+    sec("Interações", itens(f.interacoes));
+  } else {
+    const cab = [];
+    if (d.cid10) cab.push(`**CID-10:** ${lim(d.cid10)}${d.cid11 ? ` · **CID-11:** ${lim(d.cid11)}` : ""}`);
+    if (d.area_medica) cab.push(`**Área médica:** ${lim(d.area_medica)}`);
+    if (cab.length) L.push(cab.join("  \n"), "");
+    sec("Definição", par(d.definicao));
+    sec("Sintomas comuns", itens(d.sintomas_comuns));
+    sec("Sintomas incomuns", itens(d.sintomas_raros));
+    sec("⚠️ Sinais de alerta", itens(d.sinais_alerta));
+
+    const t = d.tratamento || {};
+    const trat = [];
+    if (t.padrao?.length) trat.push("### Padrão", "", ...itens(t.padrao), "");
+    if (t.medicamentos?.length) trat.push("### Medicamentos", "", ...itens(t.medicamentos), "");
+    if (t.complementares?.length) trat.push("### Complementares", "", ...itens(t.complementares), "");
+    if (t.prognostico) trat.push(`**Prognóstico:** ${lim(t.prognostico)}`, "");
+    if (trat.length) L.push("## Tratamento", "", ...trat);
+
+    sec("Complicações", itens(d.complicacoes));
+    // Diferenciais viram links internos: no Obsidian, abrem a nota da outra
+    // condição se ela existir, e ficam disponíveis para criar se não.
+    sec("Diagnósticos diferenciais",
+        (d.diferenciais || []).filter(Boolean).map(x => `- [[${lim(x)}]]`));
+    const variacoes = (d.variacoes || []).filter(v => v && v.nome).map(v => {
+      const p = [`### ${lim(v.nome)}`, ""];
+      if (v.gravidade) p.push(`**Gravidade:** ${lim(v.gravidade)}`, "");
+      if (v.definicao) p.push(lim(v.definicao), "");
+      if (v.tratamento) p.push(`**Tratamento:** ${lim(v.tratamento)}`, "");
+      return p.join("\n");
+    });
+    if (variacoes.length) L.push("## Variações e subtipos", "", ...variacoes, "");
+
+    const fp = d.fisiopatologia || {};
+    sec("Fisiopatologia (simples)", par(fp.simples));
+    sec("Fisiopatologia (avançada)", par(fp.avancada));
+    const ep = d.epidemiologia || {};
+    const linhasEp = Object.entries({
+      "Prevalência": ep.prevalencia, "Faixa etária": ep.faixa_etaria,
+      "Sexo": ep.sexo, "Distribuição geográfica": ep.distribuicao_geografica,
+    }).filter(([, v]) => v && String(v).trim()).map(([k, v]) => `- **${k}:** ${lim(v)}`);
+    sec("Epidemiologia", linhasEp);
+  }
+
+  sec("Referências", itens(d.referencias));
+  L.push("---", "", "Gerado por Invictus.Med. Conteúdo educacional produzido por IA:",
+         "confira nas fontes antes de usar em decisão clínica.", "");
+  return L.join("\n");
+}
+
+async function copyMarkdown(d) {
+  toast(await copyToClipboard(dataToMarkdown(d))
+    ? "Markdown copiado — é só colar no Obsidian." : "Não foi possível copiar.");
 }
 
 /* =================================================================
-   10) HISTÓRICO & FAVORITOS (localStorage)
+   14) HISTÓRICO & FAVORITOS (localStorage)
    ================================================================= */
 const HKEY = "invictus.history";
 const FKEY = "invictus.favorites";
@@ -1752,7 +2027,7 @@ function timeAgo(ts) {
 }
 
 /* =================================================================
-   11) BUSCA POR VOZ (Web Speech API)
+   15) BUSCA POR VOZ (Web Speech API)
    ================================================================= */
 function initVoice() {
   if (!els.voice) return;
@@ -1776,7 +2051,7 @@ function initVoice() {
 }
 
 /* =================================================================
-   12) TEMA (claro/escuro) — nativo via prefers-color-scheme
+   16) TEMA (claro/escuro) — nativo via prefers-color-scheme
    ================================================================= */
 const THEME_COLOR = { dark: "#0B0E0D", light: "#F7F8F8" };
 
@@ -1810,95 +2085,40 @@ function initTheme() {
 }
 
 /* =================================================================
-   13) DEMONSTRAÇÃO OFFLINE (funciona sem chave de IA)
+   17) DEMONSTRAÇÃO OFFLINE (sem Worker configurado)
+   -----------------------------------------------------------------
+   As fichas moram em demo.js e só são baixadas se o site rodar sem
+   Worker. Com o Worker no ar — que é o caso do site publicado — este
+   caminho nunca é percorrido e o arquivo nunca sai da rede.
    ================================================================= */
-function getDemo(term) {
-  const key = term.trim().toLowerCase();
-  const match = Object.keys(DEMO).find(k => key.includes(k));
-  return match ? DEMO[match] : null;
+const VERSAO = (document.currentScript?.src.match(/[?&]v=([^&]+)/) || [])[1] || "";
+let demoCarregando = null;
+
+function carregarDemo() {
+  if (window.DEMO_INVICTUS) return Promise.resolve(window.DEMO_INVICTUS);
+  if (demoCarregando) return demoCarregando;
+  demoCarregando = new Promise(resolve => {
+    const tag = document.createElement("script");
+    // Reaproveita a versão do próprio script.js (?v=N) para o demo não ficar
+    // preso num cache antigo quando o resto do site for atualizado.
+    tag.src = "demo.js" + (VERSAO ? "?v=" + VERSAO : "");
+    tag.onload = () => resolve(window.DEMO_INVICTUS || null);
+    tag.onerror = () => resolve(null);   // sem demo é melhor que travar a busca
+    document.head.appendChild(tag);
+  });
+  return demoCarregando;
 }
 
-const DEMO = {
-  "hipertens": {
-    nome: "Hipertensão Arterial Sistêmica",
-    cid10: "I10", cid11: "BA00",
-    sinonimos: ["Pressão alta", "HAS"],
-    area_medica: "Cardiologia / Clínica Médica",
-    definicao: "Condição crônica caracterizada por níveis pressóricos persistentemente elevados (≥140/90 mmHg em consultório). É um dos principais fatores de risco cardiovascular modificáveis.",
-    sintomas_comuns: ["Geralmente assintomática", "Cefaleia occipital", "Tontura"],
-    sintomas_raros: ["Epistaxe", "Zumbido", "Visão turva"],
-    sinais_alerta: ["Dor torácica intensa", "Dispneia súbita", "Déficit neurológico (sugestivo de AVC)", "PA ≥180/120 com lesão de órgão-alvo"],
-    tratamento: {
-      padrao: ["Mudança de estilo de vida (dieta DASH, redução de sódio)", "Atividade física regular", "Controle de peso"],
-      medicamentos: ["IECA", "BRA", "Diuréticos tiazídicos", "Bloqueadores de canal de cálcio"],
-      complementares: ["Cessação do tabagismo", "Redução do consumo de álcool", "Manejo do estresse"],
-      prognostico: "Excelente quando controlada; o risco cardiovascular reduz significativamente com adesão ao tratamento."
-    },
-    diagnostico: {
-      laboratoriais: ["Função renal", "Eletrólitos", "Glicemia", "Perfil lipídico"],
-      imagem: ["ECG", "Ecocardiograma (avaliação de hipertrofia)"],
-      criterios: ["PA ≥140/90 mmHg em duas ou mais medições", "MAPA / MRPA para confirmação"]
-    },
-    complicacoes: ["Infarto do miocárdio", "AVC", "Insuficiência renal crônica", "Retinopatia hipertensiva", "Insuficiência cardíaca"],
-    variacoes: [],
-    diferenciais: ["Hipertensão do avental branco", "Feocromocitoma", "Hiperaldosteronismo primário", "Estenose de artéria renal"],
-    epidemiologia: {
-      prevalencia: "~30% dos adultos no Brasil",
-      faixa_etaria: "Mais comum acima dos 40 anos",
-      sexo: "Discreta predominância masculina até a meia-idade",
-      distribuicao_geografica: "Universal, maior em áreas urbanas"
-    },
-    fisiopatologia: {
-      simples: "A pressão dentro das artérias fica alta demais por muito tempo, forçando o coração e os vasos a trabalharem além do normal.",
-      avancada: "Resulta da interação entre débito cardíaco e resistência vascular periférica, modulada pelo sistema renina-angiotensina-aldosterona, atividade simpática, função endotelial e manejo renal de sódio. Disfunção endotelial e remodelamento vascular perpetuam a elevação pressórica."
-    },
-    referencias: ["Diretriz Brasileira de Hipertensão Arterial (SBC)", "Harrison's Principles of Internal Medicine", "UpToDate — Hypertension"]
-  },
-  "diabetes": {
-    nome: "Diabetes Mellitus",
-    cid10: "E10–E14", cid11: "5A10–5A14",
-    sinonimos: ["DM", "Açúcar no sangue alto"],
-    area_medica: "Endocrinologia",
-    definicao: "Grupo de doenças metabólicas caracterizadas por hiperglicemia crônica decorrente de defeitos na secreção e/ou ação da insulina.",
-    sintomas_comuns: ["Poliúria", "Polidipsia", "Polifagia", "Perda de peso", "Fadiga"],
-    sintomas_raros: ["Visão turva", "Infecções de repetição", "Cicatrização lenta"],
-    sinais_alerta: ["Hálito cetônico e respiração rápida (cetoacidose)", "Rebaixamento do nível de consciência", "Glicemia muito elevada com desidratação"],
-    tratamento: {
-      padrao: ["Educação em diabetes", "Dieta e atividade física", "Monitorização glicêmica"],
-      medicamentos: ["Insulina", "Metformina", "Inibidores de SGLT2", "Análogos de GLP-1"],
-      complementares: ["Acompanhamento nutricional", "Cuidados com os pés", "Avaliação oftalmológica periódica"],
-      prognostico: "Bom controle reduz drasticamente complicações; depende fortemente da adesão e do tipo."
-    },
-    diagnostico: {
-      laboratoriais: ["Glicemia de jejum ≥126 mg/dL", "HbA1c ≥6,5%", "Teste de tolerância à glicose"],
-      imagem: [],
-      criterios: ["Sintomas clássicos + glicemia aleatória ≥200 mg/dL", "Confirmação em segunda dosagem"]
-    },
-    complicacoes: ["Retinopatia", "Nefropatia", "Neuropatia", "Pé diabético", "Doença cardiovascular"],
-    variacoes: [
-      { nome: "Diabetes tipo 1", definicao: "Destruição autoimune das células beta pancreáticas, com deficiência absoluta de insulina.", transmissao: "", gravidade: "grave", tratamento: "Insulinoterapia obrigatória" },
-      { nome: "Diabetes tipo 2", definicao: "Resistência à insulina associada a déficit secretório progressivo.", transmissao: "", gravidade: "moderada", tratamento: "Estilo de vida, antidiabéticos orais e, eventualmente, insulina" },
-      { nome: "Diabetes gestacional", definicao: "Intolerância à glicose diagnosticada na gravidez.", transmissao: "", gravidade: "moderada", tratamento: "Dieta, monitorização e insulina se necessário" },
-      { nome: "MODY", definicao: "Diabetes monogênico de início precoce e herança autossômica dominante.", transmissao: "", gravidade: "leve", tratamento: "Variável conforme o subtipo genético" },
-      { nome: "LADA", definicao: "Diabetes autoimune latente do adulto, evolução mais lenta que o tipo 1.", transmissao: "", gravidade: "moderada", tratamento: "Progressão para insulina" }
-    ],
-    diferenciais: ["Diabetes insipidus", "Hipertireoidismo", "Síndrome de Cushing"],
-    epidemiologia: {
-      prevalencia: "~10% da população adulta brasileira",
-      faixa_etaria: "Tipo 1 na infância/adolescência; tipo 2 em adultos",
-      sexo: "Distribuição semelhante entre os sexos",
-      distribuicao_geografica: "Crescente em todo o mundo"
-    },
-    fisiopatologia: {
-      simples: "O corpo não consegue usar bem o açúcar do sangue, seja por falta de insulina, seja porque ela não funciona direito.",
-      avancada: "No tipo 1, autoimunidade destrói células beta (deficiência absoluta de insulina). No tipo 2, resistência periférica à insulina, disfunção de células beta, aumento da produção hepática de glicose e alterações em incretinas convergem para hiperglicemia sustentada."
-    },
-    referencias: ["Diretrizes da Sociedade Brasileira de Diabetes", "ADA Standards of Care", "Williams Textbook of Endocrinology"]
-  },
-};
+async function getDemo(term) {
+  const fichas = await carregarDemo();
+  if (!fichas) return null;
+  const key = term.trim().toLowerCase();
+  const match = Object.keys(fichas).find(k => key.includes(k));
+  return match ? fichas[match] : null;
+}
 
 /* =================================================================
-   14) LIGAÇÃO DE EVENTOS GLOBAIS
+   18) LIGAÇÃO DE EVENTOS GLOBAIS
    ================================================================= */
 function bindGlobalEvents() {
   // Busca
@@ -1968,7 +2188,7 @@ function updateSuggHighlight(items) {
 
 
 /* =================================================================
-   16) ANAMNESE ESTRUTURADA
+   19) ANAMNESE ESTRUTURADA
    -----------------------------------------------------------------
    A ideia é digitar o mínimo possível. Quase tudo é clique: o texto
    final é montado por modelo, de forma determinística — sem IA, sem
@@ -2510,7 +2730,7 @@ function ligarEventosAnamnese() {
 
 
 /* =================================================================
-   REPORTAR CONTEÚDO ERRADO
+   20) REPORTAR CONTEÚDO ERRADO
    -----------------------------------------------------------------
    Conteúdo gerado por IA erra — não é hipótese, é estatística. Sem um
    caminho para relatar, quem encontra um erro só desconfia em silêncio,
@@ -2627,7 +2847,7 @@ function ligarEventosReporte() {
 }
 
 /* =================================================================
-   CALCULADORAS E ESCORES CLÍNICOS
+   21) CALCULADORAS E ESCORES CLÍNICOS
    -----------------------------------------------------------------
    Tudo aqui é aritmética: nenhuma chamada de IA, custo zero, resposta
    instantânea e impossível de alucinar. É o mesmo princípio que já
@@ -3093,7 +3313,7 @@ function ligarEventosCalc() {
 }
 
 /* =================================================================
-   MODO SCRIPT — a mesma ficha, na ordem do raciocínio clínico
+   22) MODO SCRIPT — a mesma ficha, na ordem do raciocínio clínico
    -----------------------------------------------------------------
    O raciocínio clínico se apoia em conhecimento organizado como
    "scripts de doença": quem costuma ter, o que acontece no corpo, como
@@ -3169,7 +3389,7 @@ function limparPapel(card) {
 }
 
 /* =================================================================
-   ESTUDAR O QUE JÁ FOI PESQUISADO
+   23) ESTUDAR O QUE JÁ FOI PESQUISADO
    -----------------------------------------------------------------
    Bancos de questões concorrentes têm centenas de milhares de itens —
    competir em volume é perder. O que eles não fazem é gerar questão
@@ -3202,7 +3422,50 @@ function formatarTempo(ms) {
 }
 
 /* =================================================================
-   20) INICIALIZAÇÃO
+   INSTALAÇÃO E USO SEM INTERNET (service worker)
+   -----------------------------------------------------------------
+   Metade do site não precisa de rede: as calculadoras são aritmética, a
+   anamnese monta o texto no navegador, favoritos e histórico estão no
+   localStorage. O service worker é o que faz o site abrir para chegar
+   nelas quando o wi-fi do hospital cai.
+   ================================================================= */
+function registrarServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+  // file:// não tem contexto seguro; registrar ali só gera erro no console.
+  if (location.protocol !== "https:" && location.hostname !== "localhost"
+      && location.hostname !== "127.0.0.1") return;
+
+  navigator.serviceWorker.register("sw.js").then(reg => {
+    // Sem etapa de build, uma versão nova pode subir a qualquer momento.
+    // Avisar é melhor que recarregar por conta própria no meio de uma leitura.
+    reg.addEventListener("updatefound", () => {
+      const novo = reg.installing;
+      if (!novo) return;
+      novo.addEventListener("statechange", () => {
+        if (novo.state === "installed" && navigator.serviceWorker.controller) {
+          mostrarAvisoDeVersao(novo);
+        }
+      });
+    });
+  }).catch(() => { /* sem offline é degradação aceitável, não erro */ });
+}
+
+function mostrarAvisoDeVersao(trabalhador) {
+  const barra = $("#avisoVersao");
+  if (!barra) return;
+  show(barra);
+  $("#avisoVersaoBtn")?.addEventListener("click", () => {
+    trabalhador.postMessage("atualizar-agora");
+    // O controllerchange chega quando o worker novo assume; só então
+    // recarregar entrega de fato a versão nova.
+    navigator.serviceWorker.addEventListener("controllerchange",
+      () => location.reload(), { once: true });
+  }, { once: true });
+  $("#avisoVersaoFechar")?.addEventListener("click", () => hide(barra), { once: true });
+}
+
+/* =================================================================
+   24) INICIALIZAÇÃO
    ================================================================= */
 document.addEventListener("DOMContentLoaded", () => {
   initTheme();
@@ -3211,4 +3474,10 @@ document.addEventListener("DOMContentLoaded", () => {
   ligarEventosAnamnese();
   ligarEventosReporte();
   ligarEventosCalc();
+  registrarServiceWorker();
+  abrirPeloEndereco();
+  // Voltar/avançar do navegador acompanham a ficha em vez de sair do site.
+  window.addEventListener("popstate", () => {
+    if (!abrirPeloEndereco()) resetToSearch({ substituirEndereco: true });
+  });
 });

@@ -46,6 +46,13 @@ sob demanda: **quiz** de múltipla escolha com correção e explicação, **flas
 para revisão, **resumo** em tópicos e **mapa mental**. Cada uma só é gerada quando
 você clica — nada fica pesando enquanto você não pede.
 
+Os flashcards não são descartáveis. Depois de revelar a resposta você diz como foi
+— errei, difícil ou fácil — e a carta é agendada pelo SM-2, o mesmo algoritmo que
+o Anki usa na base: o que você errou volta ainda na sessão, o que você acertou
+volta daqui a dias, e o intervalo cresce conforme você acerta. O botão **Revisar**
+mostra quantas venceram e é o único da aba que não chama a IA — agendamento é
+conta, então funciona sem internet e sem custo.
+
 Tem também um **estudo de caso**, e ele funciona em duas etapas de propósito.
 Primeiro você vê o paciente — história, exame físico, exames — e precisa
 escrever sua hipótese, o que a sustenta e o que você não descarta. Só depois a
@@ -76,9 +83,10 @@ O resultado aparece enquanto você preenche e muda de cor conforme a gravidade.
 E o peso de cada item fica visível ao lado dele — porque "idade ≥ 75 vale 2
 pontos" é justamente o tipo de coisa que se esquece na hora da prova.
 
-A conta de cada escore tem teste automatizado com valores conhecidos, rodando
-contra o próprio `script.js`: `node testes/escores.test.mjs`. Numa calculadora
-clínica, errar a conta em silêncio é o pior defeito possível.
+Numa calculadora clínica, errar a conta em silêncio é o pior defeito possível —
+por isso as partes que são pura aritmética têm teste automatizado rodando contra
+o próprio `script.js`, e não contra uma cópia: `node testes/revisao.test.mjs`
+cobre o agendamento das revisões, e `node testes/versao.test.mjs` cobre o cache.
 
 ## A aba de anamnese
 
@@ -114,6 +122,14 @@ Histórico e favoritos ficam salvos no seu navegador. Busca por voz, se o navega
 suportar. Tema claro e escuro, que segue a preferência do sistema até você escolher
 uma. Exportação em PDF e uma versão limpa para impressão. E um botão que formata as
 referências em ABNT — mostrando cada uma antes de você copiar.
+
+Cada ficha tem endereço próprio: o `?q=` na barra é o link para mandar no grupo da
+turma. Quem abrir recebe a ficha do momento, não uma cópia congelada — e o botão
+voltar do navegador anda entre as fichas em vez de sair do site.
+
+Para quem estuda em caderno digital, o botão Markdown copia a ficha pronta para o
+Obsidian: cabeçalho YAML com CID e especialidade, sinônimos como *aliases* e os
+diagnósticos diferenciais já em `[[links internos]]`.
 
 No rodapé tem um "Aprovado por Dr. House". Passe o mouse em cima.
 
@@ -154,6 +170,9 @@ se não carregar, o botão de PDF cai sozinho para a janela de impressão.
 | `index.html` | marcação, metadados e o script curto que aplica o tema antes da primeira pintura |
 | `style.css` | tokens de cor, tema claro/escuro, responsivo e estilos de impressão |
 | `script.js` | busca, chamadas à IA, renderização, histórico, favoritos, voz e exportação |
+| `demo.js` | duas fichas de exemplo, carregadas só quando não há Worker |
+| `sw.js` | o service worker que faz o site abrir sem internet |
+| `manifest.webmanifest` | o que o navegador lê para instalar o site como app |
 | `proxy-worker.example.js` | o Cloudflare Worker que guarda a chave da IA |
 
 A chave da IA nunca chega ao navegador. Quem fala com o modelo é um Cloudflare
@@ -163,7 +182,8 @@ passa para o próximo sozinho. A aba de estudo usa uma chave separada, para não
 disputar cota com as fichas.
 
 E se não houver IA configurada, buscar por "hipertensão" ou "diabetes" ainda
-funciona: essas duas fichas estão embutidas no código como demonstração.
+funciona: essas duas fichas ficam no `demo.js`. Ele só é baixado nesse caso —
+com o Worker no ar, o arquivo nunca sai da rede.
 
 ## Mexendo no código
 
@@ -174,10 +194,11 @@ reconhecimento de voz exigem contexto seguro. Suba um servidor:
 python3 -m http.server 8000   # ou: npx serve .
 ```
 
-A configuração fica toda no objeto `CONFIG`, no topo do `script.js`. O normal é
-`PROVIDER: "proxy"` com a URL do seu Worker em `PROXY_URL`. Existem também os
-modos diretos (`gemini`, `openai`, `anthropic`), mas neles a chave fica visível
-no código-fonte do site — servem para teste local, nunca para publicar.
+A configuração fica toda no objeto `CONFIG`, no topo do `script.js`, e o que
+importa ali é o `PROXY_URL`. Não há modo de chamar o modelo direto do navegador:
+seria preciso colocar a chave no código-fonte de um site público, e a economia de
+alguns minutos de configuração não paga a conta que vem depois. Quem escolhe
+modelo, monta o prompt e faz a cascata entre provedores é o Worker.
 
 Para subir o seu próprio Worker, `proxy-worker.example.js` é o ponto de partida:
 copie para `src/index.js` num projeto Cloudflare, cadastre as chaves como
@@ -192,8 +213,10 @@ Se for mexer, três coisas que não convém quebrar:
   Resposta de modelo é conteúdo não confiável, sem exceção.
 - Toda chamada de rede vai por `fetchWithTimeout` / `postProxy`, que já cuidam de
   prazo, cancelamento e código de erro.
-- Ao editar `style.css` ou `script.js`, incremente o `?v=` no `index.html`, senão
-  os navegadores continuam servindo a versão velha.
+- Ao editar `style.css` ou `script.js`, incremente o `?v=` no `index.html` **e o
+  `VERSAO` no `sw.js` junto**, senão o service worker segue servindo o cache
+  antigo e a atualização não chega a quem instalou. O `testes/versao.test.mjs`
+  existe para pegar exatamente esse esquecimento.
 
 A acessibilidade também é para manter: link de pular para a busca, campo como
 `combobox` com navegação por setas, painel lateral como diálogo modal com foco
@@ -290,12 +313,24 @@ a janela de impressão. O site continua funcionando.
 
 </details>
 
+## Dá para instalar
+
+O site é um PWA: dá para adicionar à tela inicial e abrir como aplicativo, com
+atalhos diretos para a anamnese e para os escores. Isso importa porque metade do
+site não precisa de internet nenhuma — as calculadoras são aritmética, a anamnese
+monta o texto no próprio navegador, favoritos e histórico já ficam salvos ali.
+Sem um service worker, nada disso abre quando o wi-fi do hospital cai.
+
+As últimas 30 fichas consultadas também ficam guardadas para leitura sem conexão.
+Quando uma delas aparece, uma tarja diz de quando é: ficha médica antiga com cara
+de recém-gerada é pior que ficha nenhuma, e quem está sem sinal no corredor não
+tem como desconfiar sozinho.
+
 ## O que ainda falta
 
-Compartilhar ficha por link, com o termo na URL. Guardar as buscas recentes para
-não consultar a IA duas vezes pela mesma coisa. Leitura offline das fichas já
-vistas. E, quando o `script.js` crescer mais um pouco, quebrar ele em módulos.
+Guardar as buscas recentes no servidor, para não consultar a IA duas vezes pela
+mesma coisa. E, quando o `script.js` crescer mais um pouco, quebrar ele em módulos.
 
 ---
 
-Feito por [@_eckermann](https://www.instagram.com/_eckermann) · beta 1.0
+Feito por [@_eckermann](https://www.instagram.com/_eckermann) · beta 2

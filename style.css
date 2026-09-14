@@ -35,8 +35,10 @@
   --shadow-sm:   0 2px 10px -6px rgba(0, 0, 0, 0.6);
 
   /* Tipografia — uma família só, pesos controlados */
-  --font-display: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-body:    "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* A fonte do sistema é o que aparece até a Inter chegar — e em muitos
+     aparelhos ela nunca chega. Vale ser uma pilha decente, não um fallback. */
+  --font-display: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-body:    "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono:    "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
   /* Forma */
@@ -63,7 +65,10 @@
   --hairline:    rgba(0, 0, 0, 0.07);
   --text:        #10120F;
   --text-soft:   #45514C;
-  --text-mut:    #6E7B76;
+  /* O tom anterior (#6E7B76) ficava entre 4,00:1 e 4,41:1 conforme a
+     superfície — abaixo do mínimo de 4,5:1 da WCAG para texto normal.
+     Este não desce de 5,04:1 em nenhuma delas. */
+  --text-mut:    #5E6B66;
   --blue:        #05865C;
   --blue-bright: #0A9E6E;
   --cyan:        #0E9F6E;
@@ -526,6 +531,54 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 0 clamp(16px, 4vw, 40px)
 .flash__verso { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--glass-brd); }
 .flash__verso p { color: var(--text-soft); line-height: 1.55; }
 
+/* ---------- Repetição espaçada ---------- */
+.flash-ajuda {
+  color: var(--text-mut); font-size: 0.85rem; line-height: 1.55;
+  margin-bottom: 16px; max-width: 62ch;
+}
+.flash-ajuda b { color: var(--text-soft); }
+
+.flash__ja {
+  display: inline-block; margin-bottom: 12px; padding: 3px 9px; border-radius: var(--r-pill);
+  background: var(--bg-deep); color: var(--text-mut);
+  font-size: 0.72rem; font-weight: 500;
+}
+
+/* As três notas. Sem cor de alerta: errar num flashcard é o mecanismo
+   funcionando, não um problema — pintar de vermelho ensina a evitar o botão. */
+.flash-notas { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.flash-nota {
+  flex: 1 1 auto; min-height: 44px; padding: 0 12px;
+  background: var(--panel-alto); border: 1px solid var(--glass-brd); border-radius: 10px;
+  color: var(--text-soft); font-size: 0.82rem; font-weight: 600; cursor: pointer;
+  transition: border-color 0.15s var(--ease), color 0.15s var(--ease);
+}
+.flash-nota:hover:not(:disabled) { border-color: var(--blue); color: var(--text); }
+.flash-nota:disabled { opacity: 0.45; cursor: default; }
+.flash-nota.is-escolhida {
+  opacity: 1; color: var(--blue-bright);
+  border-color: var(--blue); background: color-mix(in srgb, var(--blue) 14%, transparent);
+}
+.flash--respondida { border-color: color-mix(in srgb, var(--blue) 35%, var(--glass-brd)); }
+.flash__quando { color: var(--text-mut); font-size: 0.78rem; margin-top: 10px; }
+
+/* Contador de cartas vencidas no botão Revisar. */
+.study-tool--revisar { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.study-tool__n {
+  display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 6px;
+  border-radius: var(--r-pill); background: var(--blue); color: #fff;
+  font-family: var(--font-mono); font-size: 0.74rem; font-weight: 600;
+}
+.study-tool--pendente { border-color: color-mix(in srgb, var(--blue) 55%, transparent); color: var(--text); }
+
+.revisao-vazia {
+  padding: 28px; border-radius: var(--r-lg);
+  background: var(--panel); border: 1px solid var(--hairline);
+  color: var(--text-mut); font-size: 0.92rem; line-height: 1.6; max-width: 62ch;
+}
+.revisao-vazia p + p { margin-top: 8px; }
+.revisao-vazia b { color: var(--text); }
+
 /* Resumo */
 .resumo-title { font-family: var(--font-display); font-size: 1.3rem; color: var(--blue-bright); margin-bottom: 16px; }
 .resumo-bloco { margin-bottom: 18px; padding-left: 14px; border-left: 3px solid var(--glass-brd); }
@@ -636,7 +689,10 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 0 clamp(16px, 4vw, 40px)
 .toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
 .tool {
   display: inline-flex; align-items: center; gap: 7px;
-  padding: 9px 16px; border-radius: var(--r-pill);
+  /* 44px é o mínimo de alvo de toque; com padding de 9px estes botões
+     paravam em 42 — perto o bastante para passar despercebido e longe o
+     bastante para errar o toque com a ficha rolando. */
+  padding: 9px 16px; min-height: 44px; border-radius: var(--r-pill);
   font-size: 0.84rem; font-weight: 500; letter-spacing: -0.01em; color: var(--text-soft);
   background: transparent; border: 1px solid var(--glass-brd);
   transition: color 0.18s var(--ease), border-color 0.18s var(--ease);
@@ -1514,4 +1570,53 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 0 clamp(16px, 4vw, 40px)
   .card__head { flex-wrap: wrap; }
   .refl__pular { display: block; margin: 10px 0 0; }
   .study__hist { width: 100%; justify-content: center; }
+}
+
+/* =================================================================
+   USO SEM INTERNET
+   -----------------------------------------------------------------
+   Duas peças: o aviso de que existe versão nova baixada, e a tarja que
+   marca uma ficha vinda do cache. A segunda é a que importa — conteúdo
+   médico velho parecendo recém-gerado é pior que não ter conteúdo.
+   ================================================================= */
+.aviso-versao {
+  position: fixed; inset: auto 16px 16px 16px; z-index: 80;
+  display: flex; align-items: center; gap: 12px;
+  max-width: 520px; margin-inline: auto;
+  padding: 12px 12px 12px 18px; border-radius: var(--r);
+  background: var(--panel-alto); border: 1px solid var(--glass-brd);
+  box-shadow: var(--shadow); color: var(--text-soft); font-size: 0.9rem;
+}
+.aviso-versao__txt { flex: 1; }
+.aviso-versao__btn {
+  min-height: 44px; padding: 0 16px; border-radius: var(--r-pill);
+  background: var(--blue); border: none; color: #fff;
+  font-size: 0.88rem; font-weight: 600; white-space: nowrap;
+}
+.aviso-versao__btn:hover { background: var(--blue-bright); }
+.aviso-versao__x {
+  display: grid; place-items: center; width: 44px; height: 44px;
+  background: transparent; border: none; color: var(--text-mut); border-radius: 50%;
+}
+.aviso-versao__x:hover { color: var(--text); background: var(--hairline); }
+
+.copia-salva {
+  display: flex; align-items: flex-start; gap: 10px;
+  margin-bottom: 18px; padding: 12px 16px; border-radius: var(--r);
+  background: color-mix(in srgb, var(--amber) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--amber) 38%, transparent);
+  color: var(--text-soft); font-size: 0.88rem; line-height: 1.5;
+}
+.copia-salva svg { color: var(--amber); flex-shrink: 0; margin-top: 2px; }
+.copia-salva b { color: var(--text); }
+
+@media (max-width: 560px) {
+  .aviso-versao { padding-left: 14px; font-size: 0.85rem; }
+}
+
+/* Numa impressão, a tarja precisa ir junto: a folha impressa sobrevive
+   à sessão e não tem como avisar que o conteúdo envelheceu. */
+@media print {
+  .aviso-versao { display: none; }
+  .copia-salva { border: 1px solid #999; background: none; color: #000; }
 }
