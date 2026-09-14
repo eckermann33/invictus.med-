@@ -479,10 +479,18 @@ async function analyze(termRaw, { substituirEndereco = false } = {}) {
    voltar sai do site e não dá para mandar uma condição específica para
    alguém. Com ?q=, o endereço na barra já é o link compartilhável. */
 
+// O termo que o ?q= está mostrando agora. É o que distingue "o usuário
+// voltou para outra ficha" de "o usuário clicou num tópico do índice".
+let termoNoEndereco = "";
+
 function marcarNoEndereco(termo, substituir = false) {
+  termoNoEndereco = termo || "";
   if (!window.history?.pushState) return;
   const u = new URL(location.href);
   u.search = termo ? "?q=" + encodeURIComponent(termo) : "";
+  // O #fragmento é de uma seção da ficha anterior: levá-lo junto deixaria o
+  // endereço apontando para um tópico que a ficha nova pode nem ter.
+  u.hash = "";
   if (u.toString() === location.href) return;
   const estado = { q: termo || "" };
   // Trocar de ficha é navegar: merece uma entrada, para o voltar funcionar.
@@ -3598,6 +3606,14 @@ document.addEventListener("DOMContentLoaded", () => {
   abrirPeloEndereco();
   // Voltar/avançar do navegador acompanham a ficha em vez de sair do site.
   window.addEventListener("popstate", () => {
+    // Clicar num tópico do índice lateral muda só o #fragmento — e isso
+    // também dispara popstate. Sem esta comparação, o clique refazia a busca
+    // inteira: a ficha sumia, o loader voltava e a rolagem parava no topo em
+    // vez de na seção. Se o termo não mudou, não há para onde navegar: deixa
+    // o navegador rolar até a âncora sozinho.
+    const q = (new URLSearchParams(location.search).get("q") || "").trim();
+    if (q === termoNoEndereco) return;
+
     if (!abrirPeloEndereco()) resetToSearch({ substituirEndereco: true });
   });
 });
