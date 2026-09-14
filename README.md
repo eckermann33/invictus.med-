@@ -30,13 +30,15 @@ abas. Dá para começar pela simples e trocar quando quiser o mecanismo de verda
 
 No tratamento há um botão de **doses usuais**: dose de adulto, via, intervalo,
 duração, ajuste renal e o cuidado principal de cada fármaco, com link direto para
-a bula na Anvisa. Ele é um clique separado de propósito. Dose é o conteúdo de
-maior risco do site, e um passo explícito deixa claro que aquilo saiu de uma IA e
-precisa ser conferido — diferente de aparecer no meio da ficha com cara de coisa
-verificada. O aviso vem antes da tabela, vai junto quando você copia e sai junto
-na impressão, porque a folha impressa sobrevive à sessão. Só dose de adulto:
-criança, gestante e insuficiência renal precisam de fonte própria, não de uma
-linha a mais numa tabela.
+a bula na Anvisa. Ele é um clique separado de propósito — não vem junto com a
+ficha, tanto porque a ficha já andava no limite de tokens do modelo quanto porque
+dose merece um passo deliberado.
+
+Cada fármaco leva o link da bula ali do lado: conferir precisa ser mais fácil do
+que confiar. E só dose de adulto — criança, gestante e insuficiência renal
+precisam de fonte própria, não de uma linha a mais numa tabela. Quando você copia
+a tabela, a procedência vai junto no texto, porque ele sai do site e o aviso do
+rodapé fica para trás.
 
 Um botão de **modo script** reorganiza as mesmas seções na ordem em que o
 raciocínio clínico acontece — quem costuma ter, o que acontece no corpo, como
