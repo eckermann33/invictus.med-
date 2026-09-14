@@ -28,6 +28,16 @@ uma lista comprida.
 **Fisiopatologia em duas versões** — uma explicação simples e uma detalhada, em
 abas. Dá para começar pela simples e trocar quando quiser o mecanismo de verdade.
 
+No tratamento há um botão de **doses usuais**: dose de adulto, via, intervalo,
+duração, ajuste renal e o cuidado principal de cada fármaco, com link direto para
+a bula na Anvisa. Ele é um clique separado de propósito. Dose é o conteúdo de
+maior risco do site, e um passo explícito deixa claro que aquilo saiu de uma IA e
+precisa ser conferido — diferente de aparecer no meio da ficha com cara de coisa
+verificada. O aviso vem antes da tabela, vai junto quando você copia e sai junto
+na impressão, porque a folha impressa sobrevive à sessão. Só dose de adulto:
+criança, gestante e insuficiência renal precisam de fonte própria, não de uma
+linha a mais numa tabela.
+
 Um botão de **modo script** reorganiza as mesmas seções na ordem em que o
 raciocínio clínico acontece — quem costuma ter, o que acontece no corpo, como
 se apresenta, como confirmar, com o que se confunde — e rotula o papel de cada

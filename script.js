@@ -600,6 +600,18 @@ function buildSections(d) {
     if (has(t.medicamentos))   h += `<p class="sub">Medicamentos frequentemente utilizados</p>${chipList(t.medicamentos)}`;
     if (has(t.complementares)) h += `<p class="sub">Tratamentos complementares</p>${bulletList(t.complementares)}`;
     if (has(t.prognostico))    h += `<div class="prognosis"><p class="sub">Prognóstico</p><p>${escapeHTML(t.prognostico)}</p></div>`;
+    // Posologia sob demanda, como as referências em ABNT, e no fim do cartão
+    // porque a tabela é longa. Dois motivos para ser sob demanda: a ficha já
+    // vinha estourando o limite de tokens do modelo, e dose é o conteúdo de
+    // maior risco do site — merece um passo deliberado em vez de aparecer
+    // junto com o resto.
+    if (has(t.medicamentos) || has(t.padrao)) {
+      h += `<div class="poso-bloco">
+        <button class="poso-btn" id="btnPosologia" type="button">Ver doses usuais</button>
+        <p class="poso-btn__nota">Doses de adulto, para estudo. Sempre confira na bula e no protocolo do serviço.</p>
+        <div class="poso-out" id="posoOut" hidden></div>
+      </div>`;
+    }
     S.push({ id: "tratamento", label: "Tratamento", html: h });
   }
 
@@ -872,6 +884,9 @@ function bindResultEvents(d) {
   // Botão de copiar referências em ABNT
   const btnAbnt = $("#btnAbnt", els.content);
   if (btnAbnt) btnAbnt.addEventListener("click", () => generateABNT(d, btnAbnt));
+
+  const btnPoso = $("#btnPosologia", els.content);
+  if (btnPoso) btnPoso.addEventListener("click", () => gerarPosologia(d, btnPoso));
 
   // Abas de fisiopatologia
   $$(".tab", els.content).forEach(tab => {
@@ -1519,6 +1534,111 @@ async function generateABNT(d, btn) {
     toast("Não consegui formatar agora. Tente novamente em instantes.");
     if (btn) { btn.disabled = false; btn.textContent = original; }
   }
+}
+
+/* =================================================================
+   POSOLOGIA — doses usuais, sob demanda
+   -----------------------------------------------------------------
+   A ficha lista os medicamentos pelo nome; na hora da prova e do
+   ambulatório o que falta é a dose. Mas isto NÃO vai junto com a ficha,
+   por duas razões:
+
+   1. A ficha já estourava o limite de tokens do modelo (foi de onde
+      vieram os 413). Uma tabela de posologia por ficha piora isso em
+      toda busca, inclusive nas que ninguém queria dose.
+   2. Dose errada é o pior erro que este site pode cometer. Um passo
+      explícito deixa claro que aquilo foi gerado por IA e precisa ser
+      conferido — diferente de aparecer no meio do texto como se fosse
+      conteúdo verificado.
+
+   Por isso cada linha vem com link para a bula da Anvisa: conferir tem
+   que ser mais fácil do que confiar.
+   ================================================================= */
+function linhaPosologia(m) {
+  const campo = (rotulo, valor) => valor && String(valor).trim()
+    ? `<div class="poso-campo"><span class="poso-campo__r">${rotulo}</span><span>${escapeHTML(String(valor))}</span></div>`
+    : "";
+  const nome = String(m.farmaco || m.nome || "").trim();
+  if (!nome) return "";
+  const busca = encodeURIComponent(nome);
+  return `<li class="poso-item">
+    <div class="poso-item__cab">
+      <h4 class="poso-item__nome">${escapeHTML(nome)}</h4>
+      ${m.classe ? `<span class="poso-item__classe">${escapeHTML(String(m.classe))}</span>` : ""}
+    </div>
+    ${campo("Dose usual", m.dose_adulto || m.dose)}
+    ${campo("Via", m.via)}
+    ${campo("Intervalo", m.intervalo)}
+    ${campo("Duração", m.duracao)}
+    ${campo("Ajuste renal", m.ajuste_renal)}
+    ${campo("Cuidados", m.cuidados || m.contraindicacoes)}
+    <a class="poso-item__bula" target="_blank" rel="noopener noreferrer"
+       href="https://consultas.anvisa.gov.br/#/bulario/q/?nomeProduto=${busca}">Bula na Anvisa</a>
+  </li>`;
+}
+
+async function gerarPosologia(d, btn) {
+  const out = $("#posoOut", els.content);
+  const original = btn ? btn.textContent : "";
+  if (btn) { btn.disabled = true; btn.textContent = "Buscando doses…"; }
+
+  try {
+    const data = await postProxy({
+      modo: "posologia",
+      termo: d.nome,
+      medicamentos: (d.tratamento?.medicamentos || []).slice(0, 12),
+    });
+
+    const itens = (Array.isArray(data.medicamentos) ? data.medicamentos : [])
+      .map(linhaPosologia).filter(Boolean);
+    if (!itens.length) throw errWithCode("vazio", "VAZIO");
+
+    if (out) {
+      out.innerHTML = `
+        <div class="poso-aviso">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 8v5M12 16h.01M10.3 3.9 2.5 18a1.8 1.8 0 0 0 1.6 2.7h15.8a1.8 1.8 0 0 0 1.6-2.7L13.7 3.9a1.8 1.8 0 0 0-3.4 0z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <div>
+            <b>Isto foi gerado por IA e não é prescrição.</b>
+            São doses usuais de adulto, para estudo. Não contemplam criança, gestante,
+            insuficiência renal ou hepática, nem interações do caso concreto. Confira
+            cada uma na bula e no protocolo do seu serviço antes de qualquer uso.
+          </div>
+        </div>
+        <ul class="poso-lista">${itens.join("")}</ul>
+        ${data.observacoes ? `<p class="poso-obs">${escapeHTML(String(data.observacoes))}</p>` : ""}
+        <button class="poso-copiar" id="btnPosoCopiar" type="button">Copiar tabela</button>`;
+      show(out);
+      $("#btnPosoCopiar", out)?.addEventListener("click", async () => {
+        toast(await copyToClipboard(posologiaEmTexto(d, data))
+          ? "Tabela copiada." : "Não foi possível copiar.");
+      });
+    }
+    if (btn) { btn.disabled = false; btn.textContent = "Buscar de novo"; }
+  } catch (e) {
+    toast("Não consegui buscar as doses agora. Tente novamente em instantes.");
+    if (btn) { btn.disabled = false; btn.textContent = original; }
+  }
+}
+
+function posologiaEmTexto(d, data) {
+  const L = [`POSOLOGIA — ${d.nome || ""}`, ""];
+  for (const m of (data.medicamentos || [])) {
+    const nome = String(m.farmaco || m.nome || "").trim();
+    if (!nome) continue;
+    L.push(nome + (m.classe ? ` (${m.classe})` : ""));
+    const par = (r, v) => { if (v && String(v).trim()) L.push(`  ${r}: ${String(v).trim()}`); };
+    par("Dose usual", m.dose_adulto || m.dose);
+    par("Via", m.via);
+    par("Intervalo", m.intervalo);
+    par("Duração", m.duracao);
+    par("Ajuste renal", m.ajuste_renal);
+    par("Cuidados", m.cuidados || m.contraindicacoes);
+    L.push("");
+  }
+  if (data.observacoes) L.push(String(data.observacoes), "");
+  L.push("— Doses usuais de adulto, geradas por IA para estudo. Não é prescrição.",
+         "Confira na bula e no protocolo do serviço antes de qualquer uso.");
+  return L.join("\n");
 }
 
 /* =================================================================
